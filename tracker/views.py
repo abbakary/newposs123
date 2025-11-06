@@ -405,8 +405,11 @@ def dashboard(request: HttpRequest):
             'new_customers_this_month': new_customers_this_month,
             'pending_inquiries_count': pending_inquiries_count,
             'average_order_value': average_order_value,
-            'total_revenue': total_revenue,
-            'revenue_this_month': revenue_this_month,
+            'total_revenue': total_revenue,            # Cash received (payments)
+            'total_paid': total_revenue,
+            'revenue_this_month': revenue_this_month,  # Payments this month
+            'total_invoiced': total_invoiced,          # Accrual total (invoices issued)
+            'invoiced_this_month': invoiced_this_month,
             'total_vat': total_vat,
             'vat_this_month': vat_this_month,
             'total_gross': total_gross,
