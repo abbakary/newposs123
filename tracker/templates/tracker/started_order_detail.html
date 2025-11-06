@@ -99,16 +99,37 @@
                   {% csrf_token %}
                   <input type="hidden" name="action" value="update_order_details">
                   <div class="modal-body">
-                    <div class="mb-3">
+                    <!-- Item Selection for Sales Orders -->
+                    <div id="itemSelectionSection" class="mb-3" style="display:none;">
+                      <label class="form-label fw-bold">Select Item</label>
+                      <select id="editOrderItemSelect" name="item_id" class="form-select mb-2">
+                        <option value="">Loading items...</option>
+                      </select>
+                      <div class="row g-2">
+                        <div class="col-md-6">
+                          <label class="form-label">Brand</label>
+                          <input type="text" id="editOrderBrand" name="item_brand" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label">Quantity</label>
+                          <input type="number" id="editOrderQuantity" name="item_quantity" class="form-control" value="1" min="1">
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Services/Add-ons Section -->
+                    <div id="servicesAddonsSection" class="mb-3">
                       <label class="form-label fw-bold" id="editOrderOptionsLabel">Select Services</label>
                       <div id="orderServicesContainer" class="row g-2">Loading services...</div>
                       <div class="small text-muted mt-2" id="editOrderEtaHint" style="display:none;"></div>
                     </div>
+
+                    <!-- Duration -->
                     <div class="mb-3">
                       <label class="form-label fw-bold">Estimated Duration (minutes)</label>
                       <input type="number" name="estimated_duration" id="orderEstimatedDuration" class="form-control" value="{{ order.estimated_duration|default:'' }}" min="0">
                     </div>
-                    <div class="mb-2 text-muted small">Selected services will be appended to the order description for quick reference.</div>
+                    <div class="mb-2 text-muted small" id="editOrderHelpText">Selected services will be appended to the order description for quick reference.</div>
                   </div>
                   <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -144,15 +165,30 @@
             document.getElementById('editOrderDetailsBtn').addEventListener('click', function(){
               const container = document.getElementById('orderServicesContainer');
               const label = document.getElementById('editOrderOptionsLabel');
+              const itemSection = document.getElementById('itemSelectionSection');
+              const itemSelect = document.getElementById('editOrderItemSelect');
+              const brandField = document.getElementById('editOrderBrand');
+              const helpText = document.getElementById('editOrderHelpText');
+              const helpSalesText = 'Selected item and add-ons will be saved to the order. Add-ons will be appended to the order description.';
+              const helpServiceText = 'Selected services will be appended to the order description for quick reference.';
+
               container.innerHTML = 'Loading...';
               fetch('{% url "tracker:api_service_types" %}', { method: 'GET', headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }})
-                .then(r => r.json())
+                .then(r => {
+                  if (!r.ok) {
+                    console.error('API response not ok:', r.status, r.statusText);
+                  }
+                  return r.json();
+                })
                 .then(data => {
+                  console.log('API response data:', data);
                   container.innerHTML = '';
                   const existingDesc = `{{ order.description|default:'' }}`.toLowerCase();
                   const orderType = ('{{ order.type|default:'' }}').toLowerCase();
                   const serviceTypes = Array.isArray(data.service_types) ? data.service_types : [];
                   const addOns = Array.isArray(data.service_addons) ? data.service_addons : [];
+                  const inventoryItems = Array.isArray(data.inventory_items) ? data.inventory_items : [];
+                  console.log('Inventory items loaded:', inventoryItems.length, inventoryItems);
 
                   function renderCheckbox(name, mins, isChecked, extraBadge){
                     const safe = (name||'').replace(/[^A-Za-z0-9_]/g,'_');
@@ -167,7 +203,41 @@
                   }
 
                   if (orderType === 'sales') {
+                    // Show item selection for sales orders
+                    itemSection.style.display = 'block';
                     label.textContent = 'Select Add-ons';
+                    helpText.textContent = helpSalesText;
+
+                    // Populate item selection
+                    itemSelect.innerHTML = '<option value="">Select item</option>';
+                    if (inventoryItems.length > 0) {
+                      console.log('Adding', inventoryItems.length, 'items to dropdown');
+                      inventoryItems.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.id;
+                        option.textContent = `${item.brand} - ${item.name}`;
+                        option.setAttribute('data-brand', item.brand);
+                        itemSelect.appendChild(option);
+                      });
+                    } else {
+                      console.warn('No inventory items available');
+                      itemSelect.innerHTML += '<option value="" disabled>No items available</option>';
+                    }
+
+                    // Set existing item if available
+                    const existingItem = ('{{ order.item_name|default:"" }}').trim();
+                    const existingBrand = ('{{ order.brand|default:"" }}').trim();
+                    console.log('Existing item:', existingItem, 'Brand:', existingBrand);
+                    if (existingItem && inventoryItems.length > 0) {
+                      const selectedItem = inventoryItems.find(i => i.name === existingItem && i.brand === existingBrand);
+                      if (selectedItem) {
+                        console.log('Setting selected item:', selectedItem);
+                        itemSelect.value = selectedItem.id;
+                        brandField.value = selectedItem.brand;
+                      }
+                    }
+
+                    // Show add-ons for sales
                     if (addOns.length) {
                       addOns.forEach(add => {
                         const checked = existingDesc.indexOf((add.name||'').toLowerCase()) !== -1;
@@ -176,8 +246,12 @@
                     } else {
                       container.innerHTML = '<div class="text-muted">No add-ons available</div>';
                     }
-                  } else { // service or other
+                  } else {
+                    // Hide item selection for service/inquiry orders
+                    itemSection.style.display = 'none';
                     label.textContent = 'Select Services';
+                    helpText.textContent = helpServiceText;
+
                     if (serviceTypes.length) {
                       serviceTypes.forEach(svc => {
                         const checked = existingDesc.indexOf((svc.name||'').toLowerCase()) !== -1;
@@ -196,12 +270,31 @@
                     }
                   }
 
+                  // Handle item selection change
+                  itemSelect.addEventListener('change', function(){
+                    console.log('Item selection changed:', this.value);
+                    if (this.value) {
+                      const selectedItem = inventoryItems.find(i => i.id === parseInt(this.value));
+                      console.log('Selected item found:', selectedItem);
+                      if (selectedItem) {
+                        console.log('Setting brand field to:', selectedItem.brand);
+                        brandField.value = selectedItem.brand;
+                      }
+                    } else {
+                      console.log('Clearing brand field');
+                      brandField.value = '';
+                    }
+                  });
+
                   // Attach change listeners for ETA
                   container.querySelectorAll('.od-option').forEach(cb => cb.addEventListener('change', updateEditOrderEta));
                   // Initialize ETA on open
                   updateEditOrderEta();
                 })
-                .catch(err => { container.innerHTML = '<div class="text-danger">Failed to load options</div>'; console.error(err); });
+                .catch(err => {
+                  console.error('Failed to fetch API:', err);
+                  container.innerHTML = '<div class="text-danger">Failed to load options</div>';
+                });
             });
 
             function updateEditOrderEta(){

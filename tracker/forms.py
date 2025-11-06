@@ -2,9 +2,10 @@ import os
 import re
 import random
 import json
+import os
 from django import forms
 from django.contrib.auth.models import User, Group
-from .models import Customer, Order, Vehicle, InventoryItem, Profile, InventoryAdjustment, Branch, ServiceType, ServiceAddon
+from .models import Customer, Order, Vehicle, InventoryItem, Profile, InventoryAdjustment, Branch, ServiceType, ServiceAddon, Invoice, InvoiceLineItem, InvoicePayment
 
 
 class InventoryItemForm(forms.ModelForm):
@@ -1193,3 +1194,43 @@ class ProfileForm(forms.ModelForm):
                 old_photo.delete(save=False)
 
         return profile
+
+
+class InvoiceForm(forms.ModelForm):
+    class Meta:
+        model = Invoice
+        fields = ['reference', 'due_date', 'tax_rate', 'notes', 'terms']
+        widgets = {
+            'reference': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Customer PO or reference'}),
+            'due_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'tax_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '100'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Additional notes'}),
+            'terms': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Payment terms and conditions'}),
+        }
+
+
+class InvoiceLineItemForm(forms.ModelForm):
+    class Meta:
+        model = InvoiceLineItem
+        fields = ['description', 'item_type', 'inventory_item', 'quantity', 'unit', 'unit_price']
+        widgets = {
+            'description': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Item description'}),
+            'item_type': forms.Select(attrs={'class': 'form-select'}),
+            'inventory_item': forms.Select(attrs={'class': 'form-select'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}),
+            'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., PCS, UNT, HR'}),
+            'unit_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+        }
+
+
+class InvoicePaymentForm(forms.ModelForm):
+    class Meta:
+        model = InvoicePayment
+        fields = ['payment_method', 'amount', 'payment_date', 'reference', 'notes']
+        widgets = {
+            'payment_method': forms.Select(attrs={'class': 'form-select'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'payment_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'reference': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Cheque number, transaction ID, etc.'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Payment notes'}),
+        }

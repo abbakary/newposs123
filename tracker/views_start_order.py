@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 from django.db import transaction
 
-from .models import Order, Customer, Vehicle, Branch, DocumentScan, DocumentExtraction, DocumentExtractionItem, ServiceType
+from .models import Order, Customer, Vehicle, Branch, DocumentScan, DocumentExtraction, DocumentExtractionItem, ServiceType, ServiceAddon, InventoryItem
 from .utils import get_user_branch
 from .extraction_utils import process_invoice_extraction
 
@@ -152,18 +152,38 @@ def api_check_plate(request):
 @login_required
 @require_http_methods(["GET"])
 def api_service_types(request):
-    """Return list of active service types and addons for UI checkboxes."""
+    """Return list of active service types, addons, and inventory items for UI."""
     try:
         svc_qs = ServiceType.objects.filter(is_active=True).order_by('name')
         service_types = [{'name': s.name, 'estimated_minutes': s.estimated_minutes or 0} for s in svc_qs]
-        # include addons
-        from .models import ServiceAddon
-        addon_qs = ServiceAddon.objects.all().order_by('name')
+
+        addon_qs = ServiceAddon.objects.filter(is_active=True).order_by('name')
         service_addons = [{'name': a.name, 'estimated_minutes': a.estimated_minutes or 0} for a in addon_qs]
-        return JsonResponse({'service_types': service_types, 'service_addons': service_addons})
+
+        items_qs = InventoryItem.objects.select_related('brand').filter(is_active=True).order_by('brand__name', 'name')
+        inventory_items = []
+        for item in items_qs:
+            brand_name = item.brand.name if item.brand else 'Unbranded'
+            inventory_items.append({
+                'id': item.id,
+                'name': item.name,
+                'brand': brand_name,
+                'quantity': item.quantity or 0
+            })
+
+        logger.debug(f"api_service_types: Returning {len(inventory_items)} inventory items")
+        return JsonResponse({
+            'service_types': service_types,
+            'service_addons': service_addons,
+            'inventory_items': inventory_items
+        })
     except Exception as e:
-        logger.error(f"Error fetching service types: {e}")
-        return JsonResponse({'service_types': [], 'service_addons': []}, status=500)
+        logger.error(f"Error fetching service types: {e}", exc_info=True)
+        return JsonResponse({
+            'service_types': [],
+            'service_addons': [],
+            'inventory_items': []
+        }, status=500)
 
 
 @login_required
@@ -288,23 +308,53 @@ def started_order_detail(request, order_id):
                 order.vehicle.save()
 
         elif action == 'update_order_details':
-            # Update selected services and estimated duration
+            # Update selected services, add-ons, items, and estimated duration
             try:
                 services = request.POST.getlist('services') or []
                 est = request.POST.get('estimated_duration') or None
+                item_id = request.POST.get('item_id') or None
+                item_quantity = request.POST.get('item_quantity') or None
+
+                # Handle item/brand update for sales orders
+                if order.type == 'sales' and item_id:
+                    try:
+                        from .models import InventoryItem
+                        item = InventoryItem.objects.select_related('brand').get(id=int(item_id))
+                        order.item_name = item.name
+                        order.brand = item.brand.name if item.brand else 'Unbranded'
+                        if item_quantity:
+                            try:
+                                order.quantity = int(item_quantity)
+                            except (ValueError, TypeError):
+                                pass
+                    except InventoryItem.DoesNotExist:
+                        logger.warning(f"Inventory item {item_id} not found when updating order {order.id}")
+                    except Exception as e:
+                        logger.error(f"Error updating item for order {order.id}: {e}")
+
+                # Handle services/add-ons update
                 if services:
                     # Append services to description (simple storage)
                     svc_text = ', '.join(services)
                     base_desc = order.description or ''
-                    # Remove previous Services: line if exists
-                    lines = [l for l in base_desc.split('\n') if not l.strip().lower().startswith('services:')]
-                    lines.append(f"Services: {svc_text}")
+                    # Remove previous Services/Add-ons lines if exists
+                    lines = [l for l in base_desc.split('\n') if not (l.strip().lower().startswith('services:') or l.strip().lower().startswith('add-ons:') or l.strip().lower().startswith('tire services:'))]
+
+                    # For sales orders, append as add-ons; for service orders, append as services
+                    if order.type == 'sales':
+                        lines.append(f"Tire Services: {svc_text}")
+                    else:
+                        lines.append(f"Services: {svc_text}")
+
                     order.description = '\n'.join([l for l in lines if l.strip()])
+
+                # Update estimated duration
                 if est:
                     try:
                         order.estimated_duration = int(est)
                     except Exception:
                         pass
+
                 order.save()
                 # Redirect to refresh page and show changes
                 return redirect('tracker:started_order_detail', order_id=order.id)

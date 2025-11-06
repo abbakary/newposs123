@@ -9,6 +9,7 @@ from . import branch_metrics as views_branch
 from . import views_documents
 from . import views_quick_start
 from . import views_start_order
+from . import views_invoice
 
 app_name = "tracker"
 
@@ -162,4 +163,16 @@ urlpatterns = [
     path("api/quick-start/auto-fill-order/", views_quick_start.auto_fill_order_from_extraction, name="api_auto_fill_order"),
     path("api/quick-start/detect-customer-mismatch/", views_quick_start.detect_and_merge_customer_data, name="api_detect_mismatch"),
     path("api/quick-start/apply-customer-merge/", views_quick_start.apply_customer_data_merge, name="api_apply_merge"),
+
+    # Invoices
+    path("invoices/create/", views_invoice.invoice_create, name="invoice_create"),
+    path("invoices/create/<int:order_id>/", views_invoice.invoice_create, name="invoice_create_from_order"),
+    path("invoices/<int:pk>/", views_invoice.invoice_detail, name="invoice_detail"),
+    path("invoices/<int:pk>/print/", views_invoice.invoice_print, name="invoice_print"),
+    path("invoices/<int:pk>/pdf/", views_invoice.invoice_pdf, name="invoice_pdf"),
+    path("invoices/<int:pk>/finalize/", views_invoice.invoice_finalize, name="invoice_finalize"),
+    path("invoices/<int:pk>/cancel/", views_invoice.invoice_cancel, name="invoice_cancel"),
+    path("invoices/", views_invoice.invoice_list, name="invoice_list"),
+    path("invoices/order/<int:order_id>/", views_invoice.invoice_list, name="invoice_list_for_order"),
+    path("api/invoices/inventory/", views_invoice.api_inventory_for_invoice, name="api_invoices_inventory"),
 ]
