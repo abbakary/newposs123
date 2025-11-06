@@ -73,6 +73,11 @@
               <i class="fa fa-file-upload me-2"></i>Upload Invoice
             </button>
 
+            <!-- Create Invoice from this order -->
+            <a href="{% url 'tracker:invoice_create_from_order' order_id=order.id %}" class="btn btn-primary btn-lg">
+              <i class="fa fa-plus me-2"></i>Create Invoice
+            </a>
+
             <!-- Edit Order Details (services) -->
             <button type="button" id="editOrderDetailsBtn" class="btn btn-outline-primary btn-lg" data-bs-toggle="modal" data-bs-target="#editOrderDetailsModal">
               <i class="fa fa-list me-2"></i>Edit Order Details
