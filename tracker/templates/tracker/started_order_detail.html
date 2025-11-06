@@ -281,7 +281,10 @@
                   // Initialize ETA on open
                   updateEditOrderEta();
                 })
-                .catch(err => { container.innerHTML = '<div class="text-danger">Failed to load options</div>'; console.error(err); });
+                .catch(err => {
+                  console.error('Failed to fetch API:', err);
+                  container.innerHTML = '<div class="text-danger">Failed to load options</div>';
+                });
             });
 
             function updateEditOrderEta(){
