@@ -5264,38 +5264,32 @@ def customers_quick_create(request: HttpRequest):
             if not full_name or not phone:
                 return JsonResponse({'success': False, 'message': 'Name and phone are required'})
 
-            # Normalize phone number (remove all non-digit characters)
-            import re
-            normalized_phone = re.sub(r'\D', '', phone)
-            
-            # Check for existing customers with similar name and phone (scope to user's accessible customers)
-            existing_customers = scope_queryset(Customer.objects.filter(full_name__iexact=full_name), request.user, request)
-            
-            # Check each potential match for phone number similarity
-            for customer in existing_customers:
-                # Normalize stored phone number for comparison
-                stored_phone = re.sub(r'\D', '', str(customer.phone))
-                # Check for exact or partial match (at least 6 digits matching)
-                if len(normalized_phone) >= 6 and len(stored_phone) >= 6:
-                    if normalized_phone in stored_phone or stored_phone in normalized_phone:
-                        return JsonResponse({
-                            'success': False, 
-                            'message': f'A similar customer already exists: {customer.full_name} ({customer.phone})',
-                            'customer_id': customer.id,
-                            'customer_name': customer.full_name,
-                            'customer_phone': str(customer.phone)
-                        })
-
-            # Create customer (assign to user's branch if applicable)
+            # Create customer using centralized service (handles deduplication automatically)
             from .utils import get_user_branch
+            from .services import CustomerService
             customer_branch = get_user_branch(request.user)
-            customer = Customer.objects.create(
-                full_name=full_name,
-                phone=phone,
-                email=email if email else None,
-                customer_type=customer_type,
-                branch=customer_branch
-            )
+
+            try:
+                customer, created = CustomerService.create_or_get_customer(
+                    branch=customer_branch,
+                    full_name=full_name,
+                    phone=phone,
+                    email=email if email else None,
+                    customer_type=customer_type,
+                )
+
+                # If customer already existed, return that info
+                if not created:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'A similar customer already exists: {customer.full_name} ({customer.phone})',
+                        'customer_id': customer.id,
+                        'customer_name': customer.full_name,
+                        'customer_phone': str(customer.phone)
+                    })
+            except Exception as e:
+                logger.warning(f"Error creating customer in quick_create: {e}")
+                return JsonResponse({'success': False, 'message': f'Error creating customer: {str(e)}'})
 
             try:
                 add_audit_log(request.user, 'customer_create', f"Created customer {customer.full_name} ({customer.code})")
