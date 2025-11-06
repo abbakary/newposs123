@@ -329,28 +329,30 @@ def start_quick_order(request):
                 'order_number': existing_order.order_number,
             }, status=400)
         
-        # Create temporary order
-        temp_customer_name = f"Customer {job_card_number}"
-        
+        from .services import VehicleService
+
         # Find existing customer by vehicle plate if provided
         customer = None
         vehicle = None
-        
+
         if vehicle_plate:
             vehicle = Vehicle.objects.filter(
                 plate_number__iexact=vehicle_plate,
                 customer__branch=user_branch
             ).first()
-            
+
             if vehicle:
                 customer = vehicle.customer
-        
-        # Create customer if not found
+
+        # Don't create a temp customer - wait for document extraction to get real customer data
+        # This prevents the "Pending - T XXX" problem
         if not customer:
-            customer = Customer.objects.create(
+            # Create a placeholder that will be replaced when document is processed
+            from .services import CustomerService
+            customer, _ = CustomerService.create_or_get_customer(
                 branch=user_branch,
-                full_name=temp_customer_name,
-                phone='pending',  # To be updated
+                full_name=f"Job Card {job_card_number}",
+                phone=f"JC{job_card_number}",  # Use job card as temp identifier instead of "pending"
                 customer_type='personal',
             )
         
