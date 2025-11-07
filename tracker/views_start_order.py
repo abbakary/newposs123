@@ -423,58 +423,6 @@ def started_order_detail(request, order_id):
             except Exception as e:
                 logger.error(f"Error updating order details: {e}")
 
-                            try:
-                                items = extracted_data.get('items') or extracted_data.get('structured_data', {}).get('items')
-                                if items and isinstance(items, list):
-                                    from decimal import Decimal
-                                    for idx, it in enumerate(items, start=1):
-                                        code = it.get('code') or it.get('item_code') or None
-                                        desc = it.get('description') or it.get('desc') or it.get('description_full') or str(it.get('description') or '')
-                                        qty = it.get('qty') or it.get('quantity')
-                                        unit = it.get('unit') or it.get('type')
-                                        rate = it.get('rate')
-                                        value = it.get('value')
-                                        # Normalize numeric fields
-                                        def _to_decimal(v):
-                                            try:
-                                                if v is None:
-                                                    return None
-                                                if isinstance(v, (int, float, Decimal)):
-                                                    return Decimal(str(v))
-                                                v_clean = str(v).replace(',', '').strip()
-                                                return Decimal(v_clean)
-                                            except Exception:
-                                                return None
-
-                                        qty_d = _to_decimal(qty)
-                                        rate_d = _to_decimal(rate)
-                                        value_d = _to_decimal(value)
-
-                                        DocumentExtractionItem.objects.create(
-                                            extraction=extraction,
-                                            line_no=idx,
-                                            code=code,
-                                            description=desc,
-                                            qty=qty_d,
-                                            unit=unit,
-                                            rate=rate_d,
-                                            value=value_d,
-                                        )
-                            except Exception as e:
-                                logger.warning(f"Failed to save extracted items: {e}")
-
-                            doc_scan.extraction_status = 'completed'
-                            doc_scan.extracted_at = timezone.now()
-                        else:
-                            doc_scan.extraction_status = 'failed'
-                            doc_scan.extraction_error = extracted_data.get('error')
-
-                        doc_scan.save()
-                    except Exception as e:
-                        doc_scan.extraction_status = 'failed'
-                        doc_scan.extraction_error = str(e)
-                        doc_scan.save()
-                        logger.error(f"Error extracting document: {str(e)}")
         
         elif action == 'complete_order':
             # Mark order as completed
