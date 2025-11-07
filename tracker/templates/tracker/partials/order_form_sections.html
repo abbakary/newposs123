@@ -113,22 +113,31 @@
                         <h6 class="mb-0"><i class="fa fa-list-check me-2"></i>Tire Service Add-ons</h6>
                     </div>
                     <div class="card-body">
-                        <div class="row g-3">
+                        <div class="row g-2">
                             {% if sales_addons %}
                                 {% for ad in sales_addons %}
-                                <div class="col-md-3">
-                                    <div class="form-check">
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="addon-checkbox-card">
                                         <input class="form-check-input tire-service-checkbox" type="checkbox" id="oc_ts_{{ forloop.counter }}" name="tire_services" value="{{ ad.name }}" data-minutes="{{ ad.estimated_minutes }}">
-                                        <label class="form-check-label" for="oc_ts_{{ forloop.counter }}">{{ ad.name }} <small class="text-muted">({{ ad.estimated_minutes }} mins)</small></label>
+                                        <label class="addon-checkbox-label" for="oc_ts_{{ forloop.counter }}">
+                                            <div class="addon-checkbox-content">
+                                                <div class="addon-checkbox-name">{{ ad.name }}</div>
+                                                <div class="addon-checkbox-duration"><i class="fa fa-clock-o me-1"></i>{{ ad.estimated_minutes }} mins</div>
+                                            </div>
+                                        </label>
                                     </div>
                                 </div>
                                 {% endfor %}
                             {% else %}
                                 {% for checkbox in form.tire_services %}
-                                <div class="col-md-3">
-                                    <div class="form-check">
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="addon-checkbox-card">
                                         {{ checkbox.tag }}
-                                        <label class="form-check-label" for="{{ checkbox.id_for_label }}">{{ checkbox.choice_label }}</label>
+                                        <label class="addon-checkbox-label" for="{{ checkbox.id_for_label }}">
+                                            <div class="addon-checkbox-content">
+                                                <div class="addon-checkbox-name">{{ checkbox.choice_label }}</div>
+                                            </div>
+                                        </label>
                                     </div>
                                 </div>
                                 {% endfor %}
