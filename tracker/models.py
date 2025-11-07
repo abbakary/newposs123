@@ -747,6 +747,7 @@ class InvoiceLineItem(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='line_items')
 
     # Item details
+    code = models.CharField(max_length=128, blank=True, null=True, help_text='Item code from invoice')
     description = models.CharField(max_length=255)
     item_type = models.CharField(
         max_length=16,
