@@ -197,6 +197,23 @@ def _extract_document_worker(document_scan_id):
         _set_extraction_progress(document_scan_id, 'failed', 0, str(e))
 
 
+def _parse_date_safe(date_str):
+    """Parse date string to date object safely."""
+    if not date_str:
+        return None
+    try:
+        from datetime import datetime
+        if isinstance(date_str, str):
+            for fmt in ('%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', '%m/%d/%Y'):
+                try:
+                    return datetime.strptime(date_str, fmt).date()
+                except ValueError:
+                    continue
+        return None
+    except Exception:
+        return None
+
+
 def _try_auto_apply_extraction(doc_scan, extraction, extracted_data, user_branch):
     """Try to auto-apply extraction to attached order if confidence is high."""
     try:
