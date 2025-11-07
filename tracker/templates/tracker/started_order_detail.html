@@ -1045,7 +1045,7 @@ function uploadDocument() {
 
 // Create Invoice from Extraction
 function showCreateInvoiceModal(extractionId) {
-  fetch('{% url "tracker:api_get_extraction" %}?extraction_id=' + extractionId, {
+  fetch('{% url "tracker:api_get_extraction" %}' + '?extraction_id=' + extractionId, {
     method: 'GET',
     headers: {
       'X-CSRFToken': '{{ csrf_token }}',
