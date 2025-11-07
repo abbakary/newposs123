@@ -1008,10 +1008,12 @@ function submitCreateInvoiceForm() {
 
   // Try to include extracted items (if available)
   let items = [];
+  let data = {};
   try{
     const script = document.getElementById('extraction-data-' + extractionId);
     if (script){
       const parsed = JSON.parse(script.textContent || '{}');
+      data = parsed || {};
       if (Array.isArray(parsed.items)){
         items = parsed.items.map(it => ({
           code: it.code || null,
