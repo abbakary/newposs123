@@ -275,11 +275,4 @@ function getCookie(name) {
   }
   return cookieValue;
 }
-
-// Auto-focus and reset when modal opens
-document.addEventListener('shown.bs.modal', function(e) {
-  if (e.target.id === 'startOrderModal') {
-    resetStartOrderForm();
-  }
-});
 </script>
