@@ -11,7 +11,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
-from .models import DocumentScan, DocumentExtraction, Order, Vehicle, Customer, Branch
+from .models import DocumentScan, DocumentExtraction, Order, Vehicle, Customer, Branch, Invoice, InvoiceLineItem
 from .utils.document_extraction import DocumentExtractor, extract_document, match_document_to_records
 from .extraction_utils import process_invoice_extraction
 from .utils import get_user_branch
