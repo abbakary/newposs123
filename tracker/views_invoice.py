@@ -197,17 +197,46 @@ def api_upload_extract_invoice(request):
     if plate and customer_obj:
         try:
             vehicle = VehicleService.create_or_get_vehicle(customer=customer_obj, plate_number=plate)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to create/get vehicle for plate {plate}: {e}")
             vehicle = None
 
     # Create or attach order if needed
     order = selected_order
     if not order and customer_obj:
         try:
-            # Create a new order for this customer (brief order record)
-            order = OrderService.create_order(customer=customer_obj, order_type='service', branch=user_branch, vehicle=vehicle, description=f'Auto-created from invoice upload {header.get("invoice_no") or ""}')
+            # Only create a new order if this is not a temporary customer
+            is_temp = (str(customer_obj.full_name or '').startswith('Plate ') and
+                      str(customer_obj.phone or '').startswith('PLATE_'))
+
+            if is_temp:
+                # For temp customers, use selected order or create minimal order
+                if not order:
+                    order = Order.objects.create(
+                        customer=customer_obj,
+                        vehicle=vehicle,
+                        branch=user_branch,
+                        type='service',
+                        status='created',
+                        started_at=timezone.now(),
+                        description=f'Auto-created from invoice upload'
+                    )
+            else:
+                # For real customers, use OrderService
+                try:
+                    from .services import OrderService as OrderServiceClass
+                    order = OrderServiceClass.create_order(
+                        customer=customer_obj,
+                        order_type='service',
+                        branch=user_branch,
+                        vehicle=vehicle,
+                        description=f'Auto-created from invoice upload'
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to create order from invoice upload: {e}")
+                    order = None
         except Exception as e:
-            logger.warning(f"Failed to create order from invoice upload: {e}")
+            logger.warning(f"Error handling order creation: {e}")
             order = None
 
     # Create invoice record
@@ -216,7 +245,8 @@ def api_upload_extract_invoice(request):
         inv.branch = user_branch
         inv.order = order
         inv.customer = customer_obj
-        # map fields
+
+        # Parse invoice date
         inv.invoice_date = None
         if header.get('date'):
             # Try parse date in common formats
@@ -228,41 +258,85 @@ def api_upload_extract_invoice(request):
                     continue
         if not inv.invoice_date:
             inv.invoice_date = timezone.localdate()
-        inv.reference = header.get('invoice_no') or header.get('code_no') or ''
-        inv.notes = (header.get('address') or '')
-        # set monetary fields
-        inv.subtotal = (header.get('net_value') or Decimal('0'))
-        inv.tax_amount = (header.get('vat') or Decimal('0'))
-        inv.total_amount = (header.get('gross_value') or (inv.subtotal + inv.tax_amount))
+
+        # Set invoice details
+        inv.reference = (header.get('invoice_no') or header.get('code_no') or '').strip() or f"UPLOAD-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+        inv.notes = (header.get('address') or '').strip() or ''
+
+        # Set monetary fields with proper defaults
+        inv.subtotal = header.get('net_value') or Decimal('0')
+        inv.tax_amount = header.get('vat') or Decimal('0')
+        inv.total_amount = header.get('gross_value') or (inv.subtotal + inv.tax_amount)
+
+        # Ensure totals are valid
+        if inv.subtotal is None:
+            inv.subtotal = Decimal('0')
+        if inv.tax_amount is None:
+            inv.tax_amount = Decimal('0')
+        if inv.total_amount is None:
+            inv.total_amount = inv.subtotal + inv.tax_amount
+
         inv.created_by = request.user
         inv.generate_invoice_number()
         inv.save()
 
-        # Create line items
-        for it in items:
-            try:
-                qty = it.get('qty') or 1
-                unit_price = it.get('value') or it.get('rate') or Decimal('0')
-                line = InvoiceLineItem(invoice=inv, code=it.get('item_code') or None, description=it.get('description') or 'Item', quantity=qty, unit=it.get('unit') or None, unit_price=unit_price)
-                line.save()
-            except Exception as e:
-                logger.warning(f"Failed to create invoice line item: {e}")
+        # Create line items from extraction
+        if items:
+            for it in items:
+                try:
+                    qty = it.get('qty') or 1
+                    unit_price = it.get('value') or it.get('rate') or Decimal('0')
+
+                    # Ensure proper type conversion
+                    if qty is not None:
+                        try:
+                            qty = int(qty)
+                        except (ValueError, TypeError):
+                            qty = 1
+
+                    line = InvoiceLineItem(
+                        invoice=inv,
+                        code=it.get('item_code') or None,
+                        description=it.get('description') or 'Item',
+                        quantity=qty,
+                        unit=it.get('unit') or None,
+                        unit_price=unit_price
+                    )
+                    line.save()
+                except Exception as e:
+                    logger.warning(f"Failed to create invoice line item: {e}")
 
         # Recalculate totals
-        inv.calculate_totals().save()
+        inv.calculate_totals()
+        inv.save()
 
         # If linked to started order, update order with finalized details
         if order:
             try:
-                order = OrderService.update_order_from_invoice(order=order, customer=customer_obj, vehicle=vehicle, description=order.description)
+                order = OrderService.update_order_from_invoice(
+                    order=order,
+                    customer=customer_obj,
+                    vehicle=vehicle,
+                    description=order.description
+                )
             except Exception as e:
                 logger.warning(f"Failed to update order from invoice: {e}")
 
-        return JsonResponse({'success': True, 'message': 'Invoice created from upload', 'invoice_id': inv.id, 'invoice_number': inv.invoice_number, 'redirect_url': request.build_absolute_uri('/tracker/invoices/' + str(inv.id) + '/')})
+        return JsonResponse({
+            'success': True,
+            'message': 'Invoice created from upload',
+            'invoice_id': inv.id,
+            'invoice_number': inv.invoice_number,
+            'redirect_url': request.build_absolute_uri(f'/tracker/invoices/{inv.id}/')
+        })
 
     except Exception as e:
         logger.error(f"Error saving invoice from extraction: {e}\n{traceback.format_exc()}")
-        return JsonResponse({'success': False, 'message': 'Failed to save invoice', 'error': str(e)})
+        return JsonResponse({
+            'success': False,
+            'message': 'Failed to save invoice',
+            'error': str(e)
+        })
 
 
 @login_required
