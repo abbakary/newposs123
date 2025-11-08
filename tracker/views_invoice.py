@@ -6,6 +6,7 @@ import json
 import logging
 from decimal import Decimal
 from datetime import datetime
+from django.utils import timezone
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -68,6 +69,180 @@ def api_search_started_orders(request):
     except Exception as e:
         logger.warning(f"Error searching started orders by plate: {e}")
         return JsonResponse({'success': False, 'message': str(e), 'orders': []})
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_upload_extract_invoice(request):
+    """
+    API endpoint to upload an invoice image/pdf, run local OCR+parsing, and create Invoice+Items.
+    Optional POST fields:
+      - selected_order_id: to link to an existing started order
+      - plate: plate number to match started order or create temp customer
+    Behavior:
+      - If extracted customer name matches existing customer (by full_name, branch), auto-link and finalize order.
+      - If no match but plate provided, create a temporary customer (Plate {plate}) and create order.
+      - If no match and no plate, return parsed data for manual review.
+    """
+    from .services import CustomerService, OrderService, VehicleService
+    from .models import Customer, Invoice, InvoiceLineItem
+    from .utils import get_user_branch
+    from tracker.utils.invoice_extractor import extract_from_bytes
+    from decimal import Decimal
+    import traceback
+
+    user_branch = get_user_branch(request.user)
+
+    # Validate upload
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        return JsonResponse({'success': False, 'message': 'No file uploaded'})
+
+    try:
+        file_bytes = uploaded.read()
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        return JsonResponse({'success': False, 'message': 'Failed to read uploaded file'})
+
+    # Run extractor
+    try:
+        extracted = extract_from_bytes(file_bytes)
+    except Exception as e:
+        logger.error(f"Extractor error: {e}\n{traceback.format_exc()}")
+        return JsonResponse({'success': False, 'message': 'Extraction failed', 'error': str(e)})
+
+    if extracted.get('error'):
+        return JsonResponse({'success': False, 'message': extracted.get('message', 'Extraction failed'), 'data': extracted})
+
+    header = extracted.get('header') or {}
+    items = extracted.get('items') or []
+    raw_text = extracted.get('raw_text') or ''
+
+    # Attempt to match customer by name
+    cust_name = (header.get('customer_name') or '').strip()
+    matched_customer = None
+    if cust_name:
+        try:
+            matched_customer = Customer.objects.filter(branch=user_branch, full_name__iexact=cust_name).first()
+        except Exception:
+            matched_customer = None
+
+    selected_order = None
+    # If client provided selected_order_id, use it
+    selected_order_id = request.POST.get('selected_order_id') or None
+    plate = (request.POST.get('plate') or '').strip().upper() or None
+
+    if selected_order_id:
+        try:
+            selected_order = Order.objects.get(id=int(selected_order_id), branch=user_branch)
+        except Exception:
+            selected_order = None
+
+    # If no selected_order but plate provided, find started order
+    if not selected_order and plate:
+        try:
+            selected_order = OrderService.find_started_order_by_plate(user_branch, plate)
+        except Exception:
+            selected_order = None
+
+    # If matched customer found: proceed to create invoice and link
+    if matched_customer:
+        customer_obj = matched_customer
+    else:
+        # If no matched customer but plate available, create temporary customer
+        if plate:
+            try:
+                temp_name = f"Plate {plate}"
+                temp_phone = f"PLATE_{plate}"
+                customer_obj, created = CustomerService.create_or_get_customer(
+                    branch=user_branch,
+                    full_name=temp_name,
+                    phone=temp_phone,
+                    email=None,
+                    address=None,
+                    create_if_missing=True
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create temp customer for plate {plate}: {e}")
+                customer_obj = None
+        else:
+            customer_obj = None
+
+    # If still no customer_obj, return parsed data for manual review
+    if not customer_obj:
+        return JsonResponse({'success': False, 'message': 'Customer not found. Manual review required.', 'data': extracted})
+
+    # Ensure vehicle if plate
+    vehicle = None
+    if plate and customer_obj:
+        try:
+            vehicle = VehicleService.create_or_get_vehicle(customer=customer_obj, plate_number=plate)
+        except Exception:
+            vehicle = None
+
+    # Create or attach order if needed
+    order = selected_order
+    if not order and customer_obj:
+        try:
+            # Create a new order for this customer (brief order record)
+            order = OrderService.create_order(customer=customer_obj, order_type='service', branch=user_branch, vehicle=vehicle, description=f'Auto-created from invoice upload {header.get("invoice_no") or ""}')
+        except Exception as e:
+            logger.warning(f"Failed to create order from invoice upload: {e}")
+            order = None
+
+    # Create invoice record
+    try:
+        inv = Invoice()
+        inv.branch = user_branch
+        inv.order = order
+        inv.customer = customer_obj
+        # map fields
+        inv.invoice_date = None
+        if header.get('date'):
+            # Try parse date in common formats
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%y"):
+                try:
+                    inv.invoice_date = datetime.strptime(header.get('date'), fmt).date()
+                    break
+                except Exception:
+                    continue
+        if not inv.invoice_date:
+            inv.invoice_date = timezone.localdate()
+        inv.reference = header.get('invoice_no') or header.get('code_no') or ''
+        inv.notes = (header.get('address') or '')
+        # set monetary fields
+        inv.subtotal = (header.get('net_value') or Decimal('0'))
+        inv.tax_amount = (header.get('vat') or Decimal('0'))
+        inv.total_amount = (header.get('gross_value') or (inv.subtotal + inv.tax_amount))
+        inv.created_by = request.user
+        inv.generate_invoice_number()
+        inv.save()
+
+        # Create line items
+        for it in items:
+            try:
+                qty = it.get('qty') or 1
+                unit_price = it.get('value') or it.get('rate') or Decimal('0')
+                line = InvoiceLineItem(invoice=inv, code=it.get('item_code') or None, description=it.get('description') or 'Item', quantity=qty, unit=it.get('unit') or None, unit_price=unit_price)
+                line.save()
+            except Exception as e:
+                logger.warning(f"Failed to create invoice line item: {e}")
+
+        # Recalculate totals
+        inv.calculate_totals().save()
+
+        # If linked to started order, update order with finalized details
+        if order:
+            try:
+                order = OrderService.update_order_from_invoice(order=order, customer=customer_obj, vehicle=vehicle, description=order.description)
+            except Exception as e:
+                logger.warning(f"Failed to update order from invoice: {e}")
+
+        return JsonResponse({'success': True, 'message': 'Invoice created from upload', 'invoice_id': inv.id, 'invoice_number': inv.invoice_number, 'redirect_url': request.build_absolute_uri('/tracker/invoices/' + str(inv.id) + '/')})
+
+    except Exception as e:
+        logger.error(f"Error saving invoice from extraction: {e}\n{traceback.format_exc()}")
+        return JsonResponse({'success': False, 'message': 'Failed to save invoice', 'error': str(e)})
 
 
 @login_required
@@ -396,79 +571,6 @@ def invoice_pdf(request, pk):
         logger.error(f"Error generating PDF for invoice {pk}: {e}")
         messages.error(request, 'Error generating PDF.')
         return redirect('tracker:invoice_print', pk=pk)
-
-
-@login_required
-@require_http_methods(["POST"])
-def api_upload_and_extract_invoice(request):
-    """
-    API endpoint to upload an invoice file (PDF or image) and extract data using OCR.
-
-    POST parameters:
-    - invoice_file: File upload field with PDF or image
-
-    Returns JSON with extracted invoice data:
-    - customer_name
-    - customer_phone
-    - customer_address
-    - reference
-    - items (array with description, qty, unit, price)
-    - subtotal
-    - tax_amount
-    - total_amount
-    """
-    try:
-        if 'invoice_file' not in request.FILES:
-            return JsonResponse({
-                'success': False,
-                'error': 'No file uploaded. Please select an invoice file (PDF or image).'
-            }, status=400)
-
-        uploaded_file = request.FILES['invoice_file']
-
-        # Validate file size (max 10MB)
-        max_size = 10 * 1024 * 1024
-        if uploaded_file.size > max_size:
-            return JsonResponse({
-                'success': False,
-                'error': 'File size exceeds 10MB limit.'
-            }, status=400)
-
-        # Validate file extension
-        allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff']
-        file_ext = uploaded_file.name.split('.')[-1].lower()
-        if f'.{file_ext}' not in allowed_extensions:
-            return JsonResponse({
-                'success': False,
-                'error': f'Unsupported file type. Allowed types: {", ".join(allowed_extensions)}'
-            }, status=400)
-
-        # Reset file pointer to beginning
-        uploaded_file.seek(0)
-
-        # Process the file using OCR
-        from .utils.invoice_ocr import process_uploaded_invoice_file
-
-        result = process_uploaded_invoice_file(uploaded_file)
-
-        if result['success']:
-            return JsonResponse({
-                'success': True,
-                'message': 'Invoice processed successfully',
-                'data': result['data']
-            })
-        else:
-            return JsonResponse({
-                'success': False,
-                'error': result.get('error', 'Failed to extract data from invoice')
-            }, status=400)
-
-    except Exception as e:
-        logger.error(f"Error in api_upload_and_extract_invoice: {e}", exc_info=True)
-        return JsonResponse({
-            'success': False,
-            'error': f'Error processing invoice: {str(e)}'
-        }, status=500)
 
 
 @login_required

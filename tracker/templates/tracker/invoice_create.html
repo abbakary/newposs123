@@ -102,76 +102,52 @@
 
           <input type="radio" class="btn-check" name="invoice-input-mode" id="mode-upload" value="upload">
           <label class="btn btn-outline-primary" for="mode-upload">
-            <i class="fa fa-file-upload me-2"></i>Upload Invoice (PDF/Image)
+            <i class="fa fa-file-upload me-2"></i>Upload Invoice
           </label>
         </div>
+
+        <div id="uploadSection" class="mt-3 d-none">
+          <div class="mb-2">
+            <label class="form-label">Select invoice file (PDF or image)</label>
+            <input type="file" id="invoiceFileInput" class="form-control">
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" id="uploadExtractBtn" class="btn btn-primary">Upload & Extract</button>
+            <button type="button" id="uploadCancelBtn" class="btn btn-light">Cancel</button>
+            <div id="uploadProgress" class="progress ms-auto" style="width:200px; display:none"><div class="progress-bar" role="progressbar" style="width:0%"></div></div>
+          </div>
+          <div id="uploadError" class="text-danger mt-2" style="display:none"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Invoice Upload Section -->
-    <div id="invoice-upload-section" class="card mb-3" style="display: none;">
-      <div class="card-header bg-light">
-        <h6 class="mb-0">Upload Invoice File</h6>
-      </div>
-      <div class="card-body">
-        <div class="upload-area" id="invoiceUploadArea" style="border: 2px dashed #0d6efd; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; background-color: #f8f9ff; transition: all 0.3s ease;">
-          <i class="fa fa-cloud-upload" style="font-size: 48px; color: #0d6efd; margin-bottom: 15px; display: block;"></i>
-          <h5 style="color: #0d6efd; margin-bottom: 10px;">Drop Invoice Here or Click to Upload</h5>
-          <p class="text-muted mb-3">Supports: PDF, PNG, JPG, JPEG, BMP, GIF, TIFF (Max 10MB)</p>
-          <input type="file" id="invoiceFileInput" accept=".pdf,.png,.jpg,.jpeg,.bmp,.gif,.tiff" style="display: none;">
-          <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('invoiceFileInput').click();">
-            <i class="fa fa-folder-open me-2"></i>Select File
-          </button>
-        </div>
-
-        <div id="uploadProgress" style="display: none; margin-top: 20px;">
-          <div class="progress">
-            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+    <!-- Extraction Review Modal -->
+    <div class="modal fade" id="extractionReviewModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Extraction Preview</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <p class="text-center mt-2 text-muted"><i class="fa fa-spinner fa-spin me-2"></i>Processing invoice...</p>
-        </div>
-
-        <div id="uploadError" class="alert alert-danger mt-3" style="display: none;"></div>
-        <div id="uploadSuccess" class="alert alert-success mt-3" style="display: none;"></div>
-
-        <div id="extractedDataPreview" class="mt-4" style="display: none;">
-          <h6 class="mb-3">Extracted Data Preview</h6>
-          <div class="alert alert-info mb-3">
-            <small><i class="fa fa-info-circle me-2"></i>Review the extracted data below. You can edit any field before saving.</small>
+          <div class="modal-body">
+            <div id="extractedHeader" class="mb-3"></div>
+            <div id="extractedItems" class="table-responsive">
+              <table class="table table-sm table-striped">
+                <thead><tr><th>Item Code</th><th>Description</th><th>Qty</th><th>Value</th></tr></thead>
+                <tbody id="extractedItemsBody"></tbody>
+              </table>
+            </div>
+            <div id="extractedRaw" class="mt-3 small text-muted"></div>
           </div>
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Extracted Customer Name</label>
-              <input type="text" id="extractedCustomerName" class="form-control" readonly>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Extracted Phone</label>
-              <input type="text" id="extractedPhone" class="form-control" readonly>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Extracted Reference/PO</label>
-              <input type="text" id="extractedReference" class="form-control" readonly>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Extracted Total Amount</label>
-              <input type="text" id="extractedTotal" class="form-control" readonly>
-            </div>
-            <div class="col-12">
-              <label class="form-label">Extracted Address</label>
-              <textarea id="extractedAddress" class="form-control" rows="2" readonly></textarea>
-            </div>
-          </div>
-          <div class="mt-3">
-            <button type="button" class="btn btn-success me-2" id="useExtractedDataBtn">
-              <i class="fa fa-check me-2"></i>Use Extracted Data
-            </button>
-            <button type="button" class="btn btn-secondary" id="resetUploadBtn">
-              <i class="fa fa-redo me-2"></i>Upload Different Invoice
-            </button>
+          <div class="modal-footer">
+            <button type="button" id="applyExtractionBtn" class="btn btn-outline-primary">Apply to Form</button>
+            <button type="button" id="createFromExtractionBtn" class="btn btn-primary">Create Invoice from Extraction</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
     </div>
+
 
     <!-- Linking status message (shown when order is selected) -->
     {% if order %}
@@ -599,6 +575,297 @@
                   }
                 });
               }
+              // Upload vs Manual toggle
+              (function(){
+                const modeManual = document.getElementById('mode-manual');
+                const modeUpload = document.getElementById('mode-upload');
+                const uploadSection = document.getElementById('uploadSection');
+                function updateMode(){
+                  if (modeUpload && modeUpload.checked){ uploadSection.classList.remove('d-none'); }
+                  else { uploadSection.classList.add('d-none'); }
+                }
+                if (modeManual && modeUpload){
+                  modeManual.addEventListener('change', updateMode);
+                  modeUpload.addEventListener('change', updateMode);
+                  updateMode();
+                }
+              })();
+
+              // Upload processing
+              (function(){
+                const fileInput = document.getElementById('invoiceFileInput');
+                const uploadBtn = document.getElementById('uploadExtractBtn');
+                const cancelBtn = document.getElementById('uploadCancelBtn');
+                const progressWrap = document.getElementById('uploadProgress');
+                const progressBar = progressWrap ? progressWrap.querySelector('.progress-bar') : null;
+                const errorBox = document.getElementById('uploadError');
+                const reviewModalEl = document.getElementById('extractionReviewModal');
+                const reviewModal = reviewModalEl ? new bootstrap.Modal(reviewModalEl) : null;
+                const extractedHeader = document.getElementById('extractedHeader');
+                const extractedItemsBody = document.getElementById('extractedItemsBody');
+                const extractedRaw = document.getElementById('extractedRaw');
+                const applyBtn = document.getElementById('applyExtractionBtn');
+                const createBtn = document.getElementById('createFromExtractionBtn');
+
+                function getCSRF(){
+                  const name = 'csrftoken=';
+                  const parts = document.cookie.split(';');
+                  for (let i=0;i<parts.length;i++){ const c = parts[i].trim(); if (c.indexOf(name)===0) return c.substring(name.length); }
+                  const el = document.querySelector('input[name="csrfmiddlewaretoken"]');
+                  return el ? el.value : '';
+                }
+
+                function setProgress(p){ if(progressBar){ progressBar.style.width = Math.max(0, Math.min(100, p)) + '%'; } if(progressWrap){ progressWrap.style.display = p>0 && p<100 ? 'block' : (p>=100? 'block':'none'); } }
+
+                if (cancelBtn){ cancelBtn.addEventListener('click', function(){ if (fileInput) fileInput.value=''; document.getElementById('mode-manual').checked=true; document.getElementById('mode-upload').checked=false; document.getElementById('uploadSection').classList.add('d-none'); }); }
+
+                if (uploadBtn){
+                  uploadBtn.addEventListener('click', function(){
+                    if (!fileInput || !fileInput.files || !fileInput.files[0]){
+                      errorBox.style.display='block'; errorBox.textContent='Please select a file to upload.'; return;
+                    }
+                    errorBox.style.display='none';
+                    const file = fileInput.files[0];
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    // include optional plate or selected order id
+                    const plateEl = document.querySelector('[name="plate_number"]');
+                    const plate = plateEl ? plateEl.value.trim().toUpperCase() : '';
+                    if (plate) fd.append('plate', plate);
+                    const selOrder = document.querySelector('[name="selected_order_id_select"]');
+                    if (selOrder && selOrder.value) fd.append('selected_order_id', selOrder.value);
+
+                    setProgress(5);
+                    fetch('{% url "tracker:api_upload_extract_invoice" %}', {
+                      method: 'POST',
+                      body: fd,
+                      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCSRF() }
+                    }).then(r=>r.json()).then(data=>{
+                      setProgress(100);
+                      if (data && data.success){
+                        // Redirect to invoice detail
+                        window.location.href = data.redirect_url || ('/invoices/' + data.invoice_id + '/');
+                        return;
+                      }
+                      // If extraction requires manual review, data.data contains parsed fields
+                      if (data && data.data){
+                        const d = data.data;
+                        // Populate modal
+                        extractedHeader.innerHTML = `<div><strong>Invoice No:</strong> ${d.header.invoice_no || ''} &nbsp; <strong>Date:</strong> ${d.header.date || ''}</div><div><strong>Customer:</strong> ${d.header.customer_name || ''}</div><div><strong>Net:</strong> ${d.header.net_value || ''} &nbsp; <strong>VAT:</strong> ${d.header.vat || ''} &nbsp; <strong>Gross:</strong> ${d.header.gross_value || ''}</div>`;
+                        extractedItemsBody.innerHTML = '';
+                        (d.items || []).forEach(it=>{
+                          const tr = document.createElement('tr');
+                          tr.innerHTML = `<td>${it.item_code||''}</td><td>${it.description||''}</td><td>${it.qty||''}</td><td>${it.value||''}</td>`;
+                          extractedItemsBody.appendChild(tr);
+                        });
+                        extractedRaw.textContent = d.raw_text ? d.raw_text.substring(0,2000) : '';
+                        // store last extraction globally
+                        window.__lastInvoiceExtraction = d;
+                        reviewModal && reviewModal.show();
+                      } else {
+                        errorBox.style.display='block'; errorBox.textContent = data.message || 'Extraction failed. Please try manual entry.';
+                      }
+                    }).catch(err=>{
+                      setProgress(0);
+                      errorBox.style.display='block'; errorBox.textContent = 'Upload error: ' + (err && err.message?err.message:err);
+                    });
+                  });
+                }
+
+                if (applyBtn){
+                  applyBtn.addEventListener('click', function(){
+                    const d = window.__lastInvoiceExtraction || {};
+                    if (!d) return;
+                    // Map header fields to form inputs
+                    const map = {
+                      'customer_full_name': d.header.customer_name || '',
+                      'customer_address': d.header.address || '',
+                      'reference': d.header.invoice_no || d.header.code_no || '',
+                      'customer_phone': ''
+                    };
+                    const f = document.querySelector('form');
+                    Object.keys(map).forEach(k=>{ const el = f.querySelector('[name="'+k+'"]'); if (el) el.value = map[k]; });
+                    // populate line items area? leave for manual add
+                    reviewModal && reviewModal.hide();
+                    document.getElementById('mode-manual').checked=true; document.getElementById('mode-upload').checked=false; document.getElementById('uploadSection').classList.add('d-none');
+                  });
+                }
+
+                if (createBtn){
+                  createBtn.addEventListener('click', function(){
+                    // Try to create invoice using extraction: call API again but expect server to create when plate or matched customer exists
+                    const d = window.__lastInvoiceExtraction || {};
+                    if (!d){ errorBox.style.display='block'; errorBox.textContent='No extraction available'; return; }
+                    // server-side create already attempted earlier; instruct user to apply to form and submit if create failed
+                    // For now hide modal and let user apply then create
+                    reviewModal && reviewModal.hide();
+                    applyBtn.click();
+                    alert('Applied extraction to form. Please review fields and click Create Invoice to finalize.');
+                  });
+                }
+
+              })();
+                // Expose existing order id to JS (used when creating invoice from extraction)
+                {% if order %}
+                window.EXISTING_ORDER_ID = {{ order.id }};
+                {% else %}
+                window.EXISTING_ORDER_ID = null;
+                {% endif %}
+
+                function show(el){ el && el.classList.remove('d-none'); }
+                function hide(el){ el && el.classList.add('d-none'); }
+                function setProgress(p){ if(progressBar){ progressBar.style.width = Math.max(0, Math.min(100, p)) + '%'; } }
+                function getCSRF(){
+                  const name = 'csrftoken=';
+                  const parts = document.cookie.split(';');
+                  for (let i=0;i<parts.length;i++){ const c = parts[i].trim(); if (c.indexOf(name)===0) return c.substring(name.length); }
+                  const el = document.querySelector('input[name="csrfmiddlewaretoken"]');
+                  return el ? el.value : '';
+                }
+
+                function processFile(file){
+                  hide(errorBox); hide(successBox); show(progressWrap); setProgress(10);
+                  const fd = new FormData();
+                  fd.append('invoice_file', file);
+                  const controller = new AbortController();
+                  const tick = setInterval(()=>{
+                    const curr = parseInt(progressBar.style.width||'0');
+                    if (curr < 90) setProgress(curr + 5);
+                  }, 300);
+                  fetch('#', { /* upload endpoint removed */
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCSRF() },
+                    signal: controller.signal
+                  }).then(r=>r.json()).then(data=>{
+                    clearInterval(tick); setProgress(100);
+                    if (data && data.success && data.data){
+                      const d = data.data;
+                      // keep the latest extraction available globally for create action
+                      window.__lastInvoiceExtraction = d;
+                      nameEl.value = d.customer_name || '';
+                      phoneEl.value = d.customer_phone || '';
+                      refEl.value = d.reference || '';
+                      addrEl.value = d.customer_address || '';
+                      totalEl.value = (typeof d.total_amount !== 'undefined' && d.total_amount !== null) ? String(d.total_amount) : '';
+                      show(previewBox); show(successBox); successBox.textContent = 'Invoice processed successfully. Review and apply extracted data below.';
+                    } else {
+                      show(errorBox); errorBox.textContent = (data && data.error) ? data.error : 'Failed to extract data from invoice.';
+                    }
+                  }).catch(err=>{
+                    clearInterval(tick);
+                    show(errorBox); errorBox.textContent = 'Error processing invoice: ' + (err && err.message ? err.message : err);
+                  }).finally(()=>{
+                    setTimeout(()=>hide(progressWrap), 300);
+                  });
+                }
+
+                // Drag & drop
+                ['dragover','dragenter'].forEach(evt=>{
+                  area.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); area.classList.add('is-dragover'); });
+                });
+                ['dragleave','dragend','drop'].forEach(evt=>{
+                  area.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); area.classList.remove('is-dragover'); });
+                });
+                area.addEventListener('drop', function(e){
+                  const dt = e.dataTransfer; if (!dt || !dt.files || !dt.files.length) return;
+                  processFile(dt.files[0]);
+                });
+
+                // Click to select
+                area.addEventListener('click', ()=> fileInput.click());
+                if (selectBtn) selectBtn.addEventListener('click', (e)=>{ e.preventDefault(); fileInput.click(); });
+                fileInput.addEventListener('change', function(){ if (this.files && this.files[0]) processFile(this.files[0]); });
+
+                // Apply extracted data to form
+                if (useBtn){
+                  useBtn.addEventListener('click', function(){
+                    const f = document.querySelector('form'); if (!f) return;
+                    const map = {
+                      'customer_full_name': nameEl.value,
+                      'customer_phone': phoneEl.value,
+                      'customer_address': addrEl.value,
+                      'reference': refEl.value
+                    };
+                    Object.keys(map).forEach(k=>{
+                      const input = f.querySelector(`[name="${k}"]`);
+                      if (input){ input.value = map[k] || ''; input.dispatchEvent(new Event('input', { bubbles:true })); }
+                    });
+                    // Optional: reflect totals preview if available
+                    try{
+                      const netEl = document.getElementById('previewNet');
+                      const vatEl = document.getElementById('previewVAT');
+                      const grossEl = document.getElementById('previewGross');
+                      const taxRateEl = document.getElementById('previewTaxRate');
+                      const taxRate = Number(document.querySelector('[name="tax_rate"]').value || 0);
+                      const gross = Number(totalEl.value || 0);
+                      if (gross && grossEl){
+                        const vat = (taxRate/ (100+taxRate)) * gross;
+                        const net = gross - vat;
+                        if (netEl) netEl.textContent = net.toFixed(2) + ' TSH';
+                        if (vatEl) vatEl.textContent = vat.toFixed(2) + ' TSH';
+                        if (taxRateEl) taxRateEl.textContent = taxRate.toFixed(2);
+                        grossEl.textContent = gross.toFixed(2) + ' TSH';
+                      }
+                    }catch(e){}
+                    // Hide preview after applying
+                    hide(previewBox);
+                    show(successBox); successBox.textContent = 'Extracted data applied to form.';
+                  });
+                }
+
+                // Reset upload state
+
+                // Create invoice directly from extracted data
+                const createBtn = document.getElementById('createInvoiceFromExtractBtn');
+                if (createBtn){
+                  createBtn.addEventListener('click', function(){
+                    const d = window.__lastInvoiceExtraction || null;
+                    if (!d){
+                      show(errorBox); errorBox.textContent = 'No extracted data available to create invoice.'; return;
+                    }
+                    const payload = {
+                      extraction_id: null,
+                      order_id: (typeof window.EXISTING_ORDER_ID !== 'undefined') ? window.EXISTING_ORDER_ID : (document.querySelector('[name="selected_order_id_select"]') ? document.querySelector('[name="selected_order_id_select"]').value : ''),
+                      reference: refEl.value || d.reference || '',
+                      due_date: null,
+                      tax_rate: document.querySelector('[name="tax_rate"]') ? Number(document.querySelector('[name="tax_rate"]').value || 0) : null,
+                      attended_by: '',
+                      kind_attention: '',
+                      notes: '',
+                      terms: '',
+                      items: d.items || [],
+                      extracted_customer: d.customer_name || '',
+                      extracted_phone: d.customer_phone || '',
+                      extracted_plate: d.extracted_plate || '',
+                      extracted_description: d.description || ''
+                    };
+
+                    fetch('#', { /* create-from-extraction endpoint removed */
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                      body: JSON.stringify(payload)
+                    }).then(r=>r.json()).then(resp=>{
+                      if (resp && resp.success && resp.invoice_id){
+                        window.location.href = '/invoices/' + resp.invoice_id + '/';
+                      } else {
+                        show(errorBox); errorBox.textContent = (resp && resp.error) ? resp.error : 'Failed to create invoice from extraction.';
+                      }
+                    }).catch(err=>{
+                      show(errorBox); errorBox.textContent = 'Error creating invoice: ' + (err && err.message ? err.message : err);
+                    });
+                  });
+                }
+
+                if (resetBtn){
+                  resetBtn.addEventListener('click', function(){
+                    fileInput.value='';
+                    setProgress(0);
+                    hide(previewBox); hide(errorBox); hide(successBox); hide(progressWrap);
+                  });
+                }
+              })();
+
             </script>
           </form>
         </div>

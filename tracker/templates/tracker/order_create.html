@@ -1,4 +1,3 @@
-{% extends 'tracker/base.html' %}
 {% load static %}
 
 {% block title %}New Order{% endblock %}
@@ -354,7 +353,7 @@
                   option.value = vehicle.id;
                   option.textContent = vehicleLabel || 'Unnamed Vehicle';
                   vehicleSelect.appendChild(option);
-                  
+
                   // Add vehicle card for display
                   vehiclesHTML += `
                     <div class="col-md-6 col-lg-4 mb-3">
@@ -508,8 +507,9 @@
       if (presetCustomer && presetCustomer.value) {
         loadCustomerVehicles(presetCustomer.value);
       }
-      }
     })();
+
   </script>
+
   {% endblock %}
 {% endblock %}
