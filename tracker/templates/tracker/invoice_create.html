@@ -165,6 +165,9 @@
             <button type="button" class="btn btn-success me-2" id="useExtractedDataBtn">
               <i class="fa fa-check me-2"></i>Use Extracted Data
             </button>
+            <button type="button" class="btn btn-outline-primary me-2" id="createInvoiceFromExtractBtn">
+              <i class="fa fa-file-invoice me-2"></i>Create Invoice from Extraction
+            </button>
             <button type="button" class="btn btn-secondary" id="resetUploadBtn">
               <i class="fa fa-redo me-2"></i>Upload Different Invoice
             </button>
@@ -664,6 +667,8 @@
                     clearInterval(tick); setProgress(100);
                     if (data && data.success && data.data){
                       const d = data.data;
+                      // keep the latest extraction available globally for create action
+                      window.__lastInvoiceExtraction = d;
                       nameEl.value = d.customer_name || '';
                       phoneEl.value = d.customer_phone || '';
                       refEl.value = d.reference || '';
@@ -736,6 +741,48 @@
                 }
 
                 // Reset upload state
+
+                // Create invoice directly from extracted data
+                const createBtn = document.getElementById('createInvoiceFromExtractBtn');
+                if (createBtn){
+                  createBtn.addEventListener('click', function(){
+                    const d = window.__lastInvoiceExtraction || null;
+                    if (!d){
+                      show(errorBox); errorBox.textContent = 'No extracted data available to create invoice.'; return;
+                    }
+                    const payload = {
+                      extraction_id: null,
+                      order_id: (typeof window.EXISTING_ORDER_ID !== 'undefined') ? window.EXISTING_ORDER_ID : (document.querySelector('[name="selected_order_id_select"]') ? document.querySelector('[name="selected_order_id_select"]').value : ''),
+                      reference: refEl.value || d.reference || '',
+                      due_date: null,
+                      tax_rate: document.querySelector('[name="tax_rate"]') ? Number(document.querySelector('[name="tax_rate"]').value || 0) : null,
+                      attended_by: '',
+                      kind_attention: '',
+                      notes: '',
+                      terms: '',
+                      items: d.items || [],
+                      extracted_customer: d.customer_name || '',
+                      extracted_phone: d.customer_phone || '',
+                      extracted_plate: d.extracted_plate || '',
+                      extracted_description: d.description || ''
+                    };
+
+                    fetch('{% url "tracker:api_create_invoice_from_extraction" %}', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                      body: JSON.stringify(payload)
+                    }).then(r=>r.json()).then(resp=>{
+                      if (resp && resp.success && resp.invoice_id){
+                        window.location.href = '/invoices/' + resp.invoice_id + '/';
+                      } else {
+                        show(errorBox); errorBox.textContent = (resp && resp.error) ? resp.error : 'Failed to create invoice from extraction.';
+                      }
+                    }).catch(err=>{
+                      show(errorBox); errorBox.textContent = 'Error creating invoice: ' + (err && err.message ? err.message : err);
+                    });
+                  });
+                }
+
                 if (resetBtn){
                   resetBtn.addEventListener('click', function(){
                     fileInput.value='';
