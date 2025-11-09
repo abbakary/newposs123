@@ -871,6 +871,7 @@ def parse_invoice_data(text: str) -> dict:
         'reference': reference,
         'subtotal': subtotal,
         'tax': tax,
+        'tax_rate': tax_rate,
         'total': total,
         'items': items,
         'payment_method': payment_method,
