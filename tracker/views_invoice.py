@@ -151,19 +151,41 @@ def api_upload_extract_invoice(request):
     # Determine customer to use
     customer_obj = None
 
-    # First, try to match customer by extracted name
-    cust_name = (header.get('customer_name') or '').strip()
-    if cust_name:
-        try:
-            customer_obj = Customer.objects.filter(branch=user_branch, full_name__iexact=cust_name).first()
-        except Exception:
-            pass
-
-    # If no match by name, use customer from selected order if available
-    if not customer_obj and selected_order:
+    # Priority 1: Use customer from selected order if available
+    if selected_order and selected_order.customer:
         customer_obj = selected_order.customer
 
-    # If still no customer, create temporary customer using plate if available
+    # Priority 2: Try to create/find customer using extracted data
+    if not customer_obj:
+        cust_name = (header.get('customer_name') or '').strip()
+        cust_phone = (header.get('phone') or '').strip()
+
+        if cust_name and cust_phone:
+            try:
+                # Try to find existing customer with extracted name and phone
+                customer_obj, created = CustomerService.create_or_get_customer(
+                    branch=user_branch,
+                    full_name=cust_name,
+                    phone=cust_phone,
+                    email=(header.get('email') or '').strip() or None,
+                    address=(header.get('address') or '').strip() or None,
+                    create_if_missing=True
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create/get customer from extracted data: {e}")
+                customer_obj = None
+        elif cust_name:
+            # Only name available, try to find matching customer
+            try:
+                customer_obj = Customer.objects.filter(
+                    branch=user_branch,
+                    full_name__iexact=cust_name
+                ).first()
+            except Exception as e:
+                logger.warning(f"Failed to find customer by name: {e}")
+                customer_obj = None
+
+    # Priority 3: Create temporary customer using plate if available
     if not customer_obj and plate:
         try:
             temp_name = f"Plate {plate}"
@@ -180,12 +202,12 @@ def api_upload_extract_invoice(request):
             logger.warning(f"Failed to create temp customer for plate {plate}: {e}")
             customer_obj = None
 
-    # If still no customer_obj, require manual entry
+    # If still no customer, return extraction data for manual review
     if not customer_obj:
         logger.warning("No customer found for invoice upload. Extraction data returned for manual review.")
         return JsonResponse({
             'success': False,
-            'message': 'Customer not identified. Please manually select or create a customer and try again.',
+            'message': 'Could not identify customer from invoice or provided data. Please enter customer details manually.',
             'data': extracted,
             'ocr_available': extracted.get('ocr_available', False)
         })
@@ -260,10 +282,10 @@ def api_upload_extract_invoice(request):
         inv.reference = (header.get('invoice_no') or header.get('code_no') or '').strip() or f"UPLOAD-{timezone.now().strftime('%Y%m%d%H%M%S')}"
         inv.notes = (header.get('address') or '').strip() or ''
 
-        # Set monetary fields with proper defaults
-        inv.subtotal = header.get('net_value') or Decimal('0')
-        inv.tax_amount = header.get('vat') or Decimal('0')
-        inv.total_amount = header.get('gross_value') or (inv.subtotal + inv.tax_amount)
+        # Set monetary fields with proper defaults (use correct field names from extraction)
+        inv.subtotal = header.get('subtotal') or Decimal('0')
+        inv.tax_amount = header.get('tax') or Decimal('0')
+        inv.total_amount = header.get('total') or (inv.subtotal + inv.tax_amount)
 
         # Ensure totals are valid
         if inv.subtotal is None:
@@ -281,31 +303,60 @@ def api_upload_extract_invoice(request):
         if items:
             for it in items:
                 try:
+                    # Extract and validate quantity
                     qty = it.get('qty') or 1
+                    try:
+                        qty = int(float(qty)) if qty else 1
+                    except (ValueError, TypeError):
+                        qty = 1
+
+                    # Ensure qty is at least 1
+                    if qty < 1:
+                        qty = 1
+
+                    # Extract unit price (value or rate)
                     unit_price = it.get('value') or it.get('rate') or Decimal('0')
+                    try:
+                        if isinstance(unit_price, (int, float)):
+                            unit_price = Decimal(str(unit_price))
+                        elif isinstance(unit_price, str):
+                            unit_price = Decimal(unit_price.replace(',', ''))
+                        elif unit_price is None:
+                            unit_price = Decimal('0')
+                    except (ValueError, TypeError):
+                        unit_price = Decimal('0')
 
-                    # Ensure proper type conversion
-                    if qty is not None:
-                        try:
-                            qty = int(qty)
-                        except (ValueError, TypeError):
-                            qty = 1
+                    # Get item code and description
+                    item_code = (it.get('item_code') or it.get('code') or '').strip() or None
+                    description = (it.get('description') or 'Item').strip()
 
+                    # Create line item
                     line = InvoiceLineItem(
                         invoice=inv,
-                        code=it.get('item_code') or None,
-                        description=it.get('description') or 'Item',
-                        quantity=qty,
-                        unit=it.get('unit') or None,
+                        code=item_code,
+                        description=description,
+                        quantity=Decimal(str(qty)),
+                        unit=(it.get('unit') or '').strip() or None,
                         unit_price=unit_price
                     )
                     line.save()
                 except Exception as e:
-                    logger.warning(f"Failed to create invoice line item: {e}")
+                    logger.warning(f"Failed to create invoice line item from {it}: {e}")
 
         # Recalculate totals
         inv.calculate_totals()
         inv.save()
+
+        # Create payment record for tracking
+        if inv.total_amount and inv.total_amount > 0:
+            try:
+                payment = InvoicePayment()
+                payment.invoice = inv
+                payment.amount = Decimal('0')  # Default to unpaid
+                payment.payment_method = 'on_delivery'  # Default payment method
+                payment.save()
+            except Exception as e:
+                logger.warning(f"Failed to create payment record for uploaded invoice: {e}")
 
         # If linked to started order, update order with finalized details
         if order:

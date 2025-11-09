@@ -186,12 +186,41 @@ def parse_invoice_data(text: str) -> dict:
         r'Code(?:\s|:)'
     ])
 
+    # Helper to validate if text looks like a customer name vs address
+    def is_likely_customer_name(text):
+        """Check if text looks like a company/person name vs an address."""
+        if not text:
+            return False
+        # Customer names are usually shorter, no commas or street keywords
+        address_keywords = ['street', 'avenue', 'road', 'box', 'p.o', 'po', 'floor', 'apt', 'suite', 'district', 'region', 'country']
+        is_short = len(text) < 80
+        has_no_address_keywords = not any(kw in text.lower() for kw in address_keywords)
+        is_capitalized = text[0].isupper() if text else False
+        return is_short and has_no_address_keywords and is_capitalized
+
+    def is_likely_address(text):
+        """Check if text looks like an address."""
+        if not text:
+            return False
+        # Addresses often contain locations, street info, numbers, or are multi-word with specific patterns
+        address_indicators = ['street', 'avenue', 'road', 'box', 'p.o', 'po', 'floor', 'apt', 'suite',
+                             'district', 'region', 'city', 'country', 'zip', 'postal', 'dar', 'dar-es', 'tanzania', 'nairobi', 'kenya']
+        has_indicators = any(ind in text.lower() for ind in address_indicators)
+        has_numbers = bool(re.search(r'\d+', text))
+        is_longer = len(text) > 15
+        return has_indicators or (has_numbers and is_longer)
+
     # Extract customer name
     customer_name = extract_field_value([
         r'Customer\s*Name',
         r'Bill\s*To',
-        r'Buyer\s*Name'
+        r'Buyer\s*Name',
+        r'Client\s*Name'
     ])
+
+    # Validate customer name - if it looks like an address, clear it
+    if customer_name and is_likely_address(customer_name) and not is_likely_customer_name(customer_name):
+        customer_name = None
 
     # Extract address (look for lines after "Address" label)
     address = None
@@ -217,14 +246,28 @@ def parse_invoice_data(text: str) -> dict:
             if address:
                 break
 
+    # Smart fix: If customer_name is empty but address looks like a name, swap them
+    if not customer_name and address and is_likely_customer_name(address):
+        customer_name = address
+        address = None
+
+    # Also check reverse: if customer_name looks like address and address is empty, swap
+    if customer_name and is_likely_address(customer_name) and not is_likely_customer_name(customer_name):
+        if not address:
+            address = customer_name
+            customer_name = None
+
     # Extract phone/tel
-    phone = extract_field_value(r'(?:Tel|Telephone)')
+    phone = extract_field_value(r'(?:Tel|Telephone|Phone)')
     if phone:
         # Remove "Fax" part if followed by fax number
         phone = re.sub(r'\s+Fax\s+.*$', '', phone, flags=re.I).strip()
-        # Validate
+        # Validate - phone should have some digits
         if phone and not re.search(r'\d{5,}', phone):
             phone = None
+        # Clean up - remove common non-digit prefixes and ensure we have a phone
+        if phone:
+            phone = re.sub(r'^(?:Tel|Phone|Telephone)\s*[:=]?\s*', '', phone, flags=re.I).strip()
 
     # Extract email
     email = None
@@ -381,35 +424,42 @@ def parse_invoice_data(text: str) -> dict:
             text_parts = [p.strip() for p in text_only.split('|') if p.strip()]
 
             # Case 1: Line looks like "Sr Code Description Qty Rate Value" (table row)
-            if len(numbers) >= 2 and text_parts:
+            if len(numbers) >= 1 and text_parts:
                 # Try to identify what the numbers represent
                 # Usually: Sr#, ItemCode, Qty, Rate, Value
-                # Extract numeric values more carefully
-
                 # Description is text parts joined
                 desc = ' '.join(text_parts)
                 if desc and len(desc) > 2:
-                    # Extract numbers - usually qty and value are smaller/larger respectively
-                    value = numbers[-1] if len(numbers) >= 1 else None
-                    qty = 1
+                    try:
+                        # Convert all numbers to floats for comparison
+                        float_numbers = [float(n.replace(',', '')) for n in numbers]
 
-                    # If 2+ numbers, second-to-last might be qty
-                    if len(numbers) >= 2:
-                        try:
-                            qty_candidate = float(numbers[-2].replace(',', ''))
-                            if 0.1 < qty_candidate < 10000:
-                                if '.' not in numbers[-2] or qty_candidate.is_integer():
-                                    qty = int(qty_candidate) if qty_candidate.is_integer() else qty_candidate
-                        except Exception:
-                            pass
+                        # Largest number is likely the value/price
+                        value = max(float_numbers) if float_numbers else None
 
-                    current_item = {
-                        'description': desc[:255],
-                        'qty': qty if isinstance(qty, int) else int(qty) if isinstance(qty, float) and qty.is_integer() else 1,
-                        'value': to_decimal(value)
-                    }
-                    items.append(current_item)
-                    current_item = {}
+                        # Look for qty among smaller numbers (usually 1-100, often integer)
+                        qty = 1
+                        for fn in float_numbers:
+                            # If it's smaller than value and looks like a quantity
+                            if value and fn < value and 0.1 < fn < 10000:
+                                # Check if it's likely a quantity (integer or very small decimal)
+                                if fn == int(fn) or (fn - int(fn)) < 0.5:
+                                    qty = int(fn)
+                                    break
+
+                        # If we only have one number, use it as value, qty stays 1
+                        if len(numbers) == 1:
+                            value = float_numbers[0]
+
+                        current_item = {
+                            'description': desc[:255],
+                            'qty': qty,
+                            'value': to_decimal(str(value)) if value else None
+                        }
+                        items.append(current_item)
+                        current_item = {}
+                    except Exception as e:
+                        logger.warning(f"Error parsing item line: {line_stripped}, {e}")
 
             # Case 2: Line is purely descriptive text (likely description for current item)
             elif text_parts and not numbers:

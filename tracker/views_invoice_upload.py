@@ -283,9 +283,10 @@ def api_create_invoice_from_upload(request):
                 try:
                     payment = InvoicePayment()
                     payment.invoice = inv
-                    payment.amount_paid = Decimal('0')  # Default to unpaid
-                    payment.payment_method = 'pending'
-                    payment.paid_date = None
+                    payment.amount = Decimal('0')  # Default to unpaid (amount 0)
+                    payment.payment_method = 'on_delivery'  # Default payment method
+                    payment.payment_date = None
+                    payment.reference = None
                     payment.save()
                 except Exception as e:
                     logger.warning(f"Failed to create payment record: {e}")
