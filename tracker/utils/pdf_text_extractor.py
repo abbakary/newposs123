@@ -252,71 +252,60 @@ def parse_invoice_data(text: str) -> dict:
         # Address must have indicators OR have numbers and multiple parts
         return has_indicators or (has_numbers and has_multipart and len(text) > 5)
 
-    # Extract customer name
-    customer_name = extract_field_value([
-        r'Customer\s*Name',
-        r'Bill\s*To',
-        r'Buyer\s*Name',
-        r'Client\s*Name'
-    ])
+    # Extract customer name - more careful pattern matching
+    customer_name = None
 
-    # Validate customer name - if it looks like an address, clear it
-    if customer_name and is_likely_address(customer_name) and not is_likely_customer_name(customer_name):
-        customer_name = None
+    # First try the exact "Customer Name" pattern
+    m = re.search(r'Customer\s*Name\s*[:=]?\s*([^\n:{{]+?)(?=\n(?:Address|Tel|Attended|Kind|Reference|PI|Code)|$)', normalized_text, re.I | re.MULTILINE | re.DOTALL)
+    if m:
+        customer_name = m.group(1).strip()
+        # Clean up any trailing field indicators
+        customer_name = re.sub(r'\s+(?:Address|Tel|Phone|Fax|Email|Attended|Kind|Ref)\b.*$', '', customer_name, flags=re.I).strip()
 
-    # Extract address (look for lines after "Address" label) - improved to handle multi-line addresses
-    address = None
-    for i, line in enumerate(cleaned_lines):
-        if re.search(r'^Address\s*[:=]?', line, re.I):
-            # Get this line value and next lines if they're not labels
-            addr_parts = []
-            m = re.search(r'^Address\s*[:=]?\s*(.+)$', line, re.I)
-            if m:
-                addr_val = m.group(1).strip()
-                # Only add if it's not empty and not another label
-                if addr_val and not re.match(r'^[A-Z]+[a-zA-Z\s]*\s*[:=]', addr_val):
-                    addr_parts.append(addr_val)
+    # If still not found, try alternative patterns
+    if not customer_name:
+        customer_name = extract_field_value([
+            r'Bill\s*To',
+            r'Buyer\s*Name',
+            r'Client\s*Name'
+        ])
 
-            # Collect next 3-4 lines as address continuation
-            # Stop when we hit a clear label line or reach the end
-            for j in range(1, 5):
-                if i + j < len(cleaned_lines):
-                    next_line = cleaned_lines[i + j]
-                    # Skip empty lines
-                    if not next_line.strip():
-                        continue
-
-                    # Stop if it's a clear new label (pattern: "Label :" or "Label =")
-                    if re.match(r'^[A-Z][a-zA-Z\s]*\s*[:=]', next_line, re.I):
-                        break
-
-                    # Stop if it's a known field label
-                    if re.match(r'^(?:Tel|Telephone|Phone|Fax|Del\.|Ref|Date|PI|Kind|Attended|Type|Payment|Delivery|Reference)\b', next_line, re.I):
-                        break
-
-                    # This line is likely part of the address
-                    # Skip very long lines that might be from a different section
-                    if len(next_line) < 150:
-                        addr_parts.append(next_line)
-
-            # Join address parts with space or newline
-            if addr_parts:
-                address = ' '.join(addr_parts).strip()
-                # Clean up any trailing noise
-                address = re.sub(r'\s+(?:Tel|Fax|Del|Ref|Date|PI|Cust|Kind|Attended|Type|Payment|Delivery|Reference)\b.*$', '', address, flags=re.I).strip()
-                if address:
-                    break
-
-    # Smart fix: If customer_name is empty but address looks like a name, swap them
-    if not customer_name and address and is_likely_customer_name(address):
-        customer_name = address
-        address = None
-
-    # Also check reverse: if customer_name looks like address and address is empty, swap
-    if customer_name and is_likely_address(customer_name) and not is_likely_customer_name(customer_name):
-        if not address:
-            address = customer_name
+    # Validate customer name - if it looks like an address, clear it and we'll get it from Address field
+    if customer_name:
+        if is_likely_address(customer_name) and not is_likely_customer_name(customer_name):
+            # This looks like an address, not a customer name
             customer_name = None
+        elif len(customer_name) > 200:
+            # Too long to be a name, probably corrupted
+            customer_name = None
+
+    # Extract address - improved to handle multi-line addresses
+    address = None
+    address_pattern = re.compile(r'Address\s*[:=]?\s*(.+?)(?=\n(?:Tel|Attended|Kind|Reference|PI|Code|Fax|Del\.|Remarks|NOTE|Payment|Delivery)\b|$)', re.I | re.MULTILINE | re.DOTALL)
+    address_match = address_pattern.search(normalized_text)
+
+    if address_match:
+        address_text = address_match.group(1).strip()
+        # Clean up the address text - remove trailing labels/keywords
+        address_text = re.sub(r'\s+(?:Tel|Phone|Fax|Attended|Kind|Reference|Ref\.|Date|PI|Code|Type|Payment|Delivery|Remarks|NOTE|Qty|Rate|Value)\b.*', '', address_text, flags=re.I).strip()
+        # Keep newlines in address for readability (they're often multi-line)
+        address_text = ' '.join(line.strip() for line in address_text.split('\n') if line.strip())
+        if address_text and len(address_text) > 2:
+            address = address_text
+
+    # Smart fix: If customer_name is empty but address looks like it contains the name
+    # Try to split the address and extract name from first line
+    if not customer_name and address:
+        # Take first line of address if it looks like a name
+        first_line = address.split('\n')[0] if '\n' in address else address.split()[0:3]
+        potential_name = ' '.join(first_line) if isinstance(first_line, list) else first_line
+
+        if is_likely_customer_name(potential_name):
+            customer_name = potential_name
+            # Remove the name part from address
+            address = re.sub(r'^' + re.escape(potential_name) + r'\s*', '', address).strip()
+            if not address or len(address) < 3:
+                address = None
 
     # Extract phone/tel - improved to handle various formats
     phone = extract_field_value(r'(?:Tel|Telephone|Phone)')
