@@ -833,19 +833,21 @@ def parse_invoice_data(text: str) -> dict:
 
             if is_likely_item_row and not is_continuation_only:
                 try:
-                    # Extract item code - first numeric value that looks like a code
+                    # Extract item code - typically appears as the first numeric field after Sr No
                     item_code = None
                     description_text = line_stripped
 
-                    # Try to identify and extract the item code (typically 3-6 digit number, or very long number like 2132004135)
+                    # Item codes can be 3-10 digits (examples: 21004, 21019, 2132004135, 3373119002)
+                    # They typically appear after the Sr No and before the description
                     code_match = re.search(r'^[\s\d]*\s+(\d{3,10})\s+', line_stripped)
                     if code_match:
                         item_code = code_match.group(1)
-                        # Remove the code from description for cleaner extraction
+                        # Remove the Sr No and code from description for cleaner extraction
                         description_text = re.sub(r'^\s*\d+\s+\d{3,10}\s+', '', line_stripped).strip()
                     else:
-                        # Fallback: find first reasonable 3-6 digit number in the string
-                        first_code_match = re.search(r'\b(\d{3,6})\b', line_stripped)
+                        # Fallback: find first numeric value that looks like a code
+                        # This handles cases where spacing is different
+                        first_code_match = re.search(r'\b(\d{3,10})\b', line_stripped)
                         if first_code_match:
                             item_code = first_code_match.group(1)
 
