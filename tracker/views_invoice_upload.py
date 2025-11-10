@@ -274,6 +274,14 @@ def api_create_invoice_from_upload(request):
             inv.kind_attention = request.POST.get('kind_attention', '').strip() or None
             inv.remarks = request.POST.get('remarks', '').strip() or None
 
+            # Seller information (if provided via POST from extraction preview)
+            inv.seller_name = (request.POST.get('seller_name') or '').strip() or None
+            inv.seller_address = (request.POST.get('seller_address') or '').strip() or None
+            inv.seller_phone = (request.POST.get('seller_phone') or '').strip() or None
+            inv.seller_email = (request.POST.get('seller_email') or '').strip() or None
+            inv.seller_tax_id = (request.POST.get('seller_tax_id') or '').strip() or None
+            inv.seller_vat_reg = (request.POST.get('seller_vat_reg') or '').strip() or None
+
             # Parse amounts
             subtotal = Decimal(str(request.POST.get('subtotal', '0') or '0').replace(',', ''))
             tax_amount = Decimal(str(request.POST.get('tax_amount', '0') or '0').replace(',', ''))
