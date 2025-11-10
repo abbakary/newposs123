@@ -744,12 +744,20 @@
                         window.__lastInvoiceExtraction = d;
                         reviewModal && reviewModal.show();
                       } else {
-                        errorBox.style.display='block'; errorBox.textContent = data.message || 'Extraction failed. Please try manual entry.';
+                        errorBox.style.display='block';
+                        errorBox.innerHTML = '<i class="fa fa-exclamation-circle me-2"></i>' + (data.message || 'Could not fully extract invoice. Please review and apply fields below, or enter manually.');
+                        errorBox.className = 'alert alert-warning mt-2';
                       }
-                    }).catch(err=>{
+                    } catch(err){
                       setProgress(0);
-                      errorBox.style.display='block'; errorBox.textContent = 'Upload error: ' + (err && err.message?err.message:err);
-                    });
+                      errorBox.style.display='block';
+                      errorBox.innerHTML = '<i class="fa fa-exclamation-triangle me-2"></i>Upload error: ' + (err && err.message ? err.message : String(err));
+                      errorBox.className = 'alert alert-danger mt-2';
+                    } finally {
+                      uploadBtn.disabled = false;
+                      uploadBtn.innerHTML = originalBtnText;
+                      setProgress(0);
+                    }
                   });
                 }
 
