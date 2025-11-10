@@ -172,38 +172,63 @@ def api_create_invoice_from_upload(request):
     
     try:
         with transaction.atomic():
-            # Get or create customer
+            # Collect basic customer fields
             customer_name = request.POST.get('customer_name', '').strip()
             customer_phone = request.POST.get('customer_phone', '').strip()
             customer_email = request.POST.get('customer_email', '').strip() or None
             customer_address = request.POST.get('customer_address', '').strip() or None
             customer_type = request.POST.get('customer_type', 'personal')
-            
-            if not customer_name or not customer_phone:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Customer name and phone are required'
-                })
-            
-            # Try to find existing customer or create new one
-            customer_obj, created = CustomerService.create_or_get_customer(
-                branch=user_branch,
-                full_name=customer_name,
-                phone=customer_phone,
-                email=customer_email,
-                address=customer_address,
-                customer_type=customer_type,
-                create_if_missing=True
-            )
-            
-            if not customer_obj:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Failed to create/get customer'
-                })
-            
-            # Get or create vehicle if plate provided
             plate = (request.POST.get('plate') or '').strip().upper() or None
+
+            # Resolve customer using composite identifier (name + plate) when available
+            customer_obj = None
+            if customer_name and plate:
+                try:
+                    customer_obj = CustomerService.find_customer_by_name_and_plate(
+                        branch=user_branch,
+                        full_name=customer_name,
+                        plate_number=plate,
+                    )
+                except Exception as e:
+                    logger.warning(f"Composite name+plate lookup failed: {e}")
+
+            # If not found via name+plate, require phone to create/find by name+phone
+            if not customer_obj:
+                if not customer_name or not customer_phone:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Customer name and phone are required'
+                    })
+                customer_obj, created = CustomerService.create_or_get_customer(
+                    branch=user_branch,
+                    full_name=customer_name,
+                    phone=customer_phone,
+                    email=customer_email,
+                    address=customer_address,
+                    customer_type=customer_type,
+                    create_if_missing=True
+                )
+                if not customer_obj:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Failed to create/get customer'
+                    })
+            else:
+                # Update basic contact info if we found existing by name+plate
+                updated = False
+                try:
+                    if customer_email and (not customer_obj.email or customer_obj.email != customer_email):
+                        customer_obj.email = customer_email
+                        updated = True
+                    if customer_address and (not customer_obj.address or customer_obj.address != customer_address):
+                        customer_obj.address = customer_address
+                        updated = True
+                    if updated:
+                        customer_obj.save(update_fields=['email', 'address'])
+                except Exception:
+                    pass
+
+            # Get or create vehicle if plate provided
             vehicle = None
             if plate:
                 try:
