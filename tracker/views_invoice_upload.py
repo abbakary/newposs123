@@ -243,8 +243,15 @@ def api_create_invoice_from_upload(request):
                 order.vehicle = vehicle or order.vehicle
                 order.save()
             
-            # Create invoice
-            inv = Invoice()
+            # Create or reuse invoice (enforce one invoice per order)
+            inv = None
+            if order:
+                try:
+                    inv = Invoice.objects.filter(order=order).first()
+                except Exception:
+                    inv = None
+            if inv is None:
+                inv = Invoice()
             inv.branch = user_branch
             inv.order = order
             inv.customer = customer_obj
@@ -299,8 +306,26 @@ def api_create_invoice_from_upload(request):
             inv.total_amount = total_amount or (subtotal + tax_amount)
             inv.created_by = request.user
 
-            inv.generate_invoice_number()
+            if not getattr(inv, 'invoice_number', None):
+                inv.generate_invoice_number()
             inv.save()
+
+            # Save uploaded document if provided (optional in two-step flow)
+            try:
+                uploaded_file = request.FILES.get('file')
+                if uploaded_file:
+                    from django.core.files.base import ContentFile
+                    try:
+                        uploaded_file.seek(0)
+                        bytes_ = uploaded_file.read()
+                    except Exception:
+                        bytes_ = None
+                    if bytes_:
+                        filename = uploaded_file.name or f"invoice_{inv.invoice_number}.pdf"
+                        inv.document.save(filename, ContentFile(bytes_), save=True)
+            except Exception:
+                # Non-fatal
+                pass
 
             # Create line items with extracted fields
             item_descriptions = request.POST.getlist('item_description[]')
@@ -410,6 +435,7 @@ def api_create_invoice_from_upload(request):
             except Exception as e:
                 logger.warning(f"Failed to update order from invoice: {e}")
             
+            # Response
             return JsonResponse({
                 'success': True,
                 'message': 'Invoice created and order updated successfully',
