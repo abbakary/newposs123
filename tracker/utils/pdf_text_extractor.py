@@ -416,19 +416,24 @@ def parse_invoice_data(text: str) -> dict:
                 # Construct the address starting with P.O.BOX
                 address_parts = [f"P.O.BOX {pob_number}"]
 
-                # Collect following lines for city/country
-                for j in range(idx + 1, min(idx + 5, len(lines))):
+                # Collect following lines for city/country/additional address
+                for j in range(idx + 1, min(idx + 7, len(lines))):
                     next_line = lines[j].strip()
 
-                    # Stop at field labels
-                    if not next_line or re.match(r'^(?:Tel|Fax|Attended|Kind|Reference|PI|Code|Type|Date|Email|Phone|Del)', next_line, re.I):
+                    # Stop at empty lines or field labels
+                    if not next_line:
+                        continue
+
+                    if re.match(r'^(?:Tel|Fax|Attended|Kind|Reference|PI|Code|Type|Date|Email|Phone|Del|Customer|Cust|Ref|Invoice|Proforma)', next_line, re.I):
                         break
 
-                    # Keep location lines
-                    if re.search(r'\b(DAR|NAIROBI|KAMPALA|KIGALI|SALAAM|TANZANIA|KENYA|UGANDA|RWANDA|BURUNDI)\b', next_line, re.I):
+                    # Keep location lines - cities, countries, postal codes
+                    if re.search(r'\b(DAR|DAR-ES-SALAAM|SALAAM|NAIROBI|KAMPALA|KIGALI|MOMBASA|MOSHI|ARUSHA|DODOMA)\b', next_line, re.I):
                         address_parts.append(next_line)
-                    elif len(next_line) > 2 and (next_line.isupper() or re.match(r'^[A-Z][A-Z\s\-]*$', next_line)):
-                        # Likely an address line (all caps or capitalized)
+                    elif re.search(r'\b(TANZANIA|KENYA|UGANDA|RWANDA|BURUNDI|CONGO|MALAWI|ZAMBIA)\b', next_line, re.I):
+                        address_parts.append(next_line)
+                    elif len(next_line) > 2 and (next_line.isupper() or re.match(r'^[A-Z][A-Z\s\-\.,]*$', next_line)):
+                        # Likely an address line (all caps or title case)
                         address_parts.append(next_line)
                     elif len(next_line) < 3:  # Very short, might be separator
                         continue
