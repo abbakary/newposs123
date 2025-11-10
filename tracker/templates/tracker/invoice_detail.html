@@ -83,6 +83,18 @@
             <p class="mb-0">{{ invoice.vehicle.plate_number }} - {{ invoice.vehicle.make }} {{ invoice.vehicle.model }}</p>
           </div>
           {% endif %}
+          {% if invoice.attended_by %}
+          <div class="mt-2">
+            <label class="form-label mb-1"><small>Attended By</small></label>
+            <p class="mb-0">{{ invoice.attended_by }}</p>
+          </div>
+          {% endif %}
+          {% if invoice.kind_attention %}
+          <div class="mt-2">
+            <label class="form-label mb-1"><small>Kind Attention</small></label>
+            <p class="mb-0">{{ invoice.kind_attention }}</p>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
