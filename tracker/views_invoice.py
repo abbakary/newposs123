@@ -276,9 +276,17 @@ def api_upload_extract_invoice(request):
             logger.warning(f"Error handling order creation: {e}")
             order = None
 
-    # Create invoice record
+    # Create or reuse invoice record (enforce 1 invoice per order)
     try:
-        inv = Invoice()
+        # If an order exists and already has an invoice, reuse it
+        inv = None
+        if order:
+            try:
+                inv = Invoice.objects.filter(order=order).first()
+            except Exception:
+                inv = None
+        if inv is None:
+            inv = Invoice()
         inv.branch = user_branch
         inv.order = order
         inv.customer = customer_obj
@@ -337,8 +345,19 @@ def api_upload_extract_invoice(request):
             inv.total_amount = inv.subtotal + inv.tax_amount
 
         inv.created_by = request.user
-        inv.generate_invoice_number()
+        if not getattr(inv, 'invoice_number', None):
+            inv.generate_invoice_number()
         inv.save()
+
+        # Persist uploaded document into invoice.document for traceability
+        try:
+            from django.core.files.base import ContentFile
+            filename = (uploaded.name if uploaded and getattr(uploaded, 'name', None) else f"invoice_{inv.invoice_number}.pdf")
+            if 'file_bytes' in locals() and file_bytes:
+                inv.document.save(filename, ContentFile(file_bytes), save=True)
+        except Exception:
+            # Non-fatal: continue without blocking invoice creation
+            pass
 
         # Aggregate duplicate line items by code (fallback to description) before creation
         def _aggregate_items(items_list):
@@ -476,9 +495,18 @@ def api_upload_extract_invoice(request):
             except Exception as e:
                 logger.warning(f"Failed to update order from invoice: {e}")
 
+        # If we reused an existing invoice for the order, inform the client
+        reused_message = 'Invoice created from upload'
+        if order:
+            try:
+                only_this = Invoice.objects.filter(order=order, id=inv.id).exists()
+                reused_message = 'Invoice updated/linked to existing order invoice' if only_this else reused_message
+            except Exception:
+                pass
+
         return JsonResponse({
             'success': True,
-            'message': 'Invoice created from upload',
+            'message': reused_message,
             'invoice_id': inv.id,
             'invoice_number': inv.invoice_number,
             'redirect_url': request.build_absolute_uri(f'/tracker/invoices/{inv.id}/')
