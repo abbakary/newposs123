@@ -602,6 +602,68 @@
         </div>
     </div>
 
+    <!-- Invoices Card - Full Width -->
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="card card-full-height shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="fa fa-file-invoice me-2"></i>Invoices ({{ invoices|length }})</h6>
+                </div>
+                <div class="card-body">
+                    {% if invoices %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Invoice #</th>
+                                    <th>Date</th>
+                                    <th>Order</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for inv in invoices %}
+                                <tr>
+                                    <td><a class="text-decoration-none fw-medium" href="{% url 'tracker:invoice_detail' pk=inv.id %}">{{ inv.invoice_number }}</a></td>
+                                    <td>{{ inv.invoice_date|date:"d/m/Y" }}</td>
+                                    <td>
+                                        {% if inv.order %}
+                                            <a href="{% url 'tracker:order_detail' pk=inv.order.id %}">{{ inv.order.order_number }}</a>
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end"><strong>{{ inv.total_amount|floatformat:2 }}</strong></td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'tracker:invoice_detail' pk=inv.id %}" class="btn btn-outline-primary" title="View"><i class="fa fa-eye"></i></a>
+                                            <a href="{% url 'tracker:invoice_print' pk=inv.id %}" target="_blank" class="btn btn-outline-secondary" title="Print"><i class="fa fa-print"></i></a>
+                                            <form method="post" action="{% url 'tracker:invoice_pdf' pk=inv.id %}" style="display:inline;">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-outline-success" title="PDF"><i class="fa fa-file-pdf"></i></button>
+                                            </form>
+                                            {% if inv.document %}
+                                                <a href="{% url 'tracker:invoice_document_view' pk=inv.id %}" target="_blank" class="btn btn-outline-info" title="Open Document"><i class="fa fa-external-link-alt"></i></a>
+                                                <a href="{% url 'tracker:invoice_document_download' pk=inv.id %}" class="btn btn-outline-dark" title="Download"><i class="fa fa-download"></i></a>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="fa fa-info-circle me-2"></i>No invoices yet for this customer.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Customer Insights Card - Full Width -->
     <div class="row g-4 mb-4">
         <div class="col-12">
