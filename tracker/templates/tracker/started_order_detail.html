@@ -206,6 +206,13 @@
                             </div>
                           </div>
 
+                          <!-- Line Items -->
+                          <div class="mb-3 pb-3 border-bottom">
+                            <h6 class="text-muted mb-2"><i class="fa fa-list me-2"></i>Line Items</h6>
+                            <div id="previewLineItems">
+                              <p class="text-muted">-</p>
+                            </div>
+                          </div>
 
                           <!-- Payment Information -->
                           <div class="mb-3 pb-3 border-bottom">
@@ -311,12 +318,23 @@
                                 <input type="email" name="customer_email" class="form-control" placeholder="email@example.com">
                               </div>
                               <div class="col-md-6">
-                                <label class="form-label">Type</label>
-                                <select name="customer_type" class="form-select">
+                                <label class="form-label">Customer Type *</label>
+                                <select name="customer_type" id="invoiceCustomerType" class="form-select" required>
+                                  <option value="">Select customer type</option>
                                   <option value="personal">Personal</option>
-                                  <option value="company">Company</option>
+                                  <option value="company">Private Company</option>
                                   <option value="ngo">NGO</option>
                                   <option value="government">Government</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div class="row mb-2" id="personalSubtypeWrapper" style="display:none;">
+                              <div class="col-md-6">
+                                <label class="form-label">Personal Subtype</label>
+                                <select name="customer_personal_subtype" class="form-select">
+                                  <option value="">Select subtype</option>
+                                  <option value="owner">Owner</option>
+                                  <option value="driver">Driver</option>
                                 </select>
                               </div>
                             </div>
@@ -386,42 +404,103 @@
 
                         <hr>
 
+                        <!-- Order Type Selection -->
                         <div class="mb-3">
-                          <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="form-label fw-bold mb-0">Line Items</label>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="addLineItemBtn">
-                              <i class="fa fa-plus me-1"></i>Add Item
-                            </button>
+                          <label class="form-label fw-bold">Order Type *</label>
+                          <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check order-type-option" name="order_type" id="orderTypeService" value="service" required>
+                            <label class="btn btn-outline-primary" for="orderTypeService">
+                              <i class="fa fa-hammer me-2"></i>Service
+                            </label>
+
+                            <input type="radio" class="btn-check order-type-option" name="order_type" id="orderTypeSales" value="sales" required>
+                            <label class="btn btn-outline-primary" for="orderTypeSales">
+                              <i class="fa fa-shopping-bag me-2"></i>Sales
+                            </label>
                           </div>
-                          <div id="lineItemsContainer">
-                            <div class="line-item-row card mb-2">
-                              <div class="card-body p-2">
-                                <div class="row g-2">
-                                  <div class="col-md-4">
-                                    <input type="text" class="form-control form-control-sm" name="item_description[]" placeholder="Item description" required>
-                                  </div>
-                                  <div class="col-md-1">
-                                    <input type="text" class="form-control form-control-sm" name="item_code[]" placeholder="Code" title="Item code">
-                                  </div>
-                                  <div class="col-md-1">
-                                    <input type="number" class="form-control form-control-sm" name="item_qty[]" placeholder="Qty" value="1" min="1" step="0.01">
-                                  </div>
-                                  <div class="col-md-1">
-                                    <input type="text" class="form-control form-control-sm" name="item_unit[]" placeholder="Unit" title="Unit (PCS, KG, etc)">
-                                  </div>
-                                  <div class="col-md-2">
-                                    <input type="number" class="form-control form-control-sm" name="item_price[]" placeholder="Unit price" step="0.01" min="0" required>
-                                  </div>
-                                  <div class="col-md-1">
-                                    <button type="button" class="btn btn-sm btn-danger remove-item">
-                                      <i class="fa fa-trash"></i>
-                                    </button>
-                                  </div>
-                                </div>
+                        </div>
+
+                        <!-- Service Order Type Section -->
+                        <div id="serviceOrderSection" style="display:none;" class="mb-3">
+                          <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                              <h6 class="mb-0"><i class="fa fa-list-check me-2"></i>Service Offered</h6>
+                            </div>
+                            <div class="card-body">
+                              <div class="row g-2" id="serviceTypesContainer">
+                                <!-- Service checkboxes will be loaded here -->
                               </div>
+                              <div class="small text-muted mt-2" id="serviceEtaHint" style="display:none;"></div>
                             </div>
                           </div>
                         </div>
+
+                        <!-- Sales Order Type Section -->
+                        <div id="salesOrderSection" style="display:none;" class="mb-3">
+                          <div class="card border-warning">
+                            <div class="card-header bg-warning text-dark">
+                              <h6 class="mb-0"><i class="fa fa-list-check me-2"></i>Tire Service Add-ons</h6>
+                            </div>
+                            <div class="card-body">
+                              <div class="row g-2" id="addonTypesContainer">
+                                <!-- Addon checkboxes will be loaded here -->
+                              </div>
+                              <div class="small text-muted mt-2" id="addonEtaHint" style="display:none;"></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Hidden input to store selected services/addons -->
+                        <input type="hidden" name="service_selection" id="serviceSelection" value="">
+                        <input type="hidden" name="estimated_duration" id="estimatedDuration" value="">
+
+                        <style>
+                          .service-checkbox-card, .addon-checkbox-card {
+                            padding: 12px;
+                            border: 2px solid #e0e0e0;
+                            border-radius: 8px;
+                            transition: all 0.2s ease;
+                            cursor: pointer;
+                            height: 100%;
+                            display: flex;
+                            align-items: center;
+                          }
+                          .service-checkbox-card:hover, .addon-checkbox-card:hover {
+                            background-color: #f8f9fa;
+                            border-color: #0d6efd;
+                          }
+                          .service-checkbox-card input[type="checkbox"]:checked + .service-checkbox-label,
+                          .addon-checkbox-card input[type="checkbox"]:checked + .addon-checkbox-label {
+                            color: #0d6efd;
+                            font-weight: 600;
+                          }
+                          .service-checkbox-card input[type="checkbox"]:checked,
+                          .addon-checkbox-card input[type="checkbox"]:checked {
+                            border-color: #0d6efd;
+                            background-color: #0d6efd;
+                          }
+                          .service-checkbox-card input, .addon-checkbox-card input {
+                            margin-right: 8px;
+                            cursor: pointer;
+                            flex-shrink: 0;
+                          }
+                          .service-checkbox-label, .addon-checkbox-label {
+                            cursor: pointer;
+                            margin: 0;
+                            flex: 1;
+                          }
+                          .service-checkbox-content, .addon-checkbox-content {
+                            width: 100%;
+                          }
+                          .service-checkbox-name, .addon-checkbox-name {
+                            font-weight: 500;
+                            margin-bottom: 4px;
+                          }
+                          .service-checkbox-duration, .addon-checkbox-duration {
+                            font-size: 0.875rem;
+                            color: #6c757d;
+                          }
+                        </style>
 
                         <div class="row mb-3">
                           <div class="col-md-6">
@@ -823,51 +902,77 @@
 
               function showExtractedDataPreview(header, items){
                 // Customer Information
-                document.getElementById('previewCustomerName').textContent = header.customer_name || '-';
-                document.getElementById('previewCustomerPhone').textContent = header.phone || '-';
-                document.getElementById('previewCustomerEmail').textContent = header.email || '-';
-                document.getElementById('previewCustomerAddress').textContent = header.address || '-';
+                const el1 = document.getElementById('previewCustomerName');
+                if (el1) el1.textContent = header.customer_name || '-';
+
+                const el2 = document.getElementById('previewCustomerPhone');
+                if (el2) el2.textContent = header.phone || '-';
+
+                const el3 = document.getElementById('previewCustomerEmail');
+                if (el3) el3.textContent = header.email || '-';
+
+                const el4 = document.getElementById('previewCustomerAddress');
+                if (el4) el4.textContent = header.address || '-';
 
                 // Invoice Information
-                document.getElementById('previewInvoiceNo').textContent = header.invoice_no || '-';
-                document.getElementById('previewInvoiceDate').textContent = header.date || '-';
-                document.getElementById('previewCodeNo').textContent = header.code_no || header.reference || '-';
+                const el5 = document.getElementById('previewInvoiceNo');
+                if (el5) el5.textContent = header.invoice_no || '-';
+
+                const el6 = document.getElementById('previewInvoiceDate');
+                if (el6) el6.textContent = header.date || '-';
+
+                const el7 = document.getElementById('previewCodeNo');
+                if (el7) el7.textContent = header.code_no || header.reference || '-';
 
                 // Line Items
                 const itemsContainer = document.getElementById('previewLineItems');
-                if (items && items.length > 0) {
-                  itemsContainer.innerHTML = items.map((item, idx) => `
-                    <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom">
-                      <div>
-                        <strong>${item.description || '-'}</strong><br>
-                        <small class="text-muted">Qty: ${item.qty || 1}</small>
+                if (itemsContainer) {
+                  if (items && items.length > 0) {
+                    itemsContainer.innerHTML = items.map((item, idx) => `
+                      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom">
+                        <div>
+                          <strong>${item.description || '-'}</strong><br>
+                          <small class="text-muted">Qty: ${item.qty || 1}</small>
+                        </div>
+                        <div class="text-end">
+                          <strong>${(item.value || 0).toLocaleString()}</strong>
+                        </div>
                       </div>
-                      <div class="text-end">
-                        <strong>${(item.value || 0).toLocaleString()}</strong>
-                      </div>
-                    </div>
-                  `).join('');
-                } else {
-                  itemsContainer.innerHTML = '<p class="text-muted">-</p>';
+                    `).join('');
+                  } else {
+                    itemsContainer.innerHTML = '<p class="text-muted">-</p>';
+                  }
                 }
 
                 // Payment Information
-                document.getElementById('previewSubtotal').textContent = (header.subtotal || 0).toLocaleString();
-                document.getElementById('previewTax').textContent = (header.tax || 0).toLocaleString();
-                document.getElementById('previewTotal').textContent = (header.total || 0).toLocaleString();
+                const el8 = document.getElementById('previewSubtotal');
+                if (el8) el8.textContent = (header.subtotal || 0).toLocaleString();
+
+                const el9 = document.getElementById('previewTax');
+                if (el9) el9.textContent = (header.tax || 0).toLocaleString();
+
+                const el10 = document.getElementById('previewTotal');
+                if (el10) el10.textContent = (header.total || 0).toLocaleString();
 
                 // Transaction Details
-                document.getElementById('previewPaymentMethod').textContent = header.payment_method || '-';
-                document.getElementById('previewDeliveryTerms').textContent = header.delivery_terms || '-';
+                const el11 = document.getElementById('previewPaymentMethod');
+                if (el11) el11.textContent = header.payment_method || '-';
+
+                const el12 = document.getElementById('previewDeliveryTerms');
+                if (el12) el12.textContent = header.delivery_terms || '-';
 
                 // Attendee Information
-                document.getElementById('previewAttendedBy').textContent = header.attended_by || '-';
-                document.getElementById('previewKindAttention').textContent = header.kind_attention || '-';
+                const el13 = document.getElementById('previewAttendedBy');
+                if (el13) el13.textContent = header.attended_by || '-';
+
+                const el14 = document.getElementById('previewKindAttention');
+                if (el14) el14.textContent = header.kind_attention || '-';
 
                 // Remarks
-                document.getElementById('previewRemarks').textContent = header.remarks || '-';
+                const el15 = document.getElementById('previewRemarks');
+                if (el15) el15.textContent = header.remarks || '-';
 
-                uploadedInvoicePreview.style.display = 'block';
+                if (uploadedInvoicePreview) uploadedInvoicePreview.style.display = 'block';
               }
 
               if (useExtractedDataBtn){
@@ -908,13 +1013,29 @@
                 const header = data.header || {};
                 if (manualForm){
                   // Populate customer fields
-                  manualForm.querySelector('input[name="customer_name"]').value = header.customer_name || '';
-                  manualForm.querySelector('input[name="customer_phone"]').value = header.phone || '';
-                  manualForm.querySelector('input[name="customer_email"]').value = header.email || '';
-                  manualForm.querySelector('input[name="customer_address"]').value = header.address || '';
+                  const customerNameField = manualForm.querySelector('input[name="customer_name"]');
+                  if (customerNameField) customerNameField.value = header.customer_name || '';
+
+                  const customerPhoneField = manualForm.querySelector('input[name="customer_phone"]');
+                  if (customerPhoneField) customerPhoneField.value = header.phone || '';
+
+                  const customerEmailField = manualForm.querySelector('input[name="customer_email"]');
+                  if (customerEmailField) customerEmailField.value = header.email || '';
+
+                  const customerAddressField = manualForm.querySelector('input[name="customer_address"]');
+                  if (customerAddressField) customerAddressField.value = header.address || '';
+
+                  // Populate customer type (default to personal if not specified)
+                  const customerTypeField = manualForm.querySelector('select[name="customer_type"]');
+                  if (customerTypeField) {
+                    customerTypeField.value = header.customer_type || 'personal';
+                    // Trigger change event to update subtype visibility
+                    customerTypeField.dispatchEvent(new Event('change'));
+                  }
 
                   // Populate invoice fields
-                  manualForm.querySelector('input[name="invoice_number"]').value = header.invoice_no || header.code_no || '';
+                  const invoiceNumberField = manualForm.querySelector('input[name="invoice_number"]');
+                  if (invoiceNumberField) invoiceNumberField.value = header.invoice_no || header.code_no || '';
 
                   // Handle invoice_date - convert from dd/mm/yyyy to yyyy-mm-dd for HTML date input
                   let invoiceDateValue = '';
@@ -926,11 +1047,17 @@
                       invoiceDateValue = header.date;
                     }
                   }
-                  manualForm.querySelector('input[name="invoice_date"]').value = invoiceDateValue;
+                  const invoiceDateField = manualForm.querySelector('input[name="invoice_date"]');
+                  if (invoiceDateField) invoiceDateField.value = invoiceDateValue;
 
-                  manualForm.querySelector('input[name="subtotal"]').value = header.subtotal || '';
-                  manualForm.querySelector('input[name="tax_amount"]').value = header.tax || '';
-                  manualForm.querySelector('input[name="total_amount"]').value = header.total || '';
+                  const subtotalField = manualForm.querySelector('input[name="subtotal"]');
+                  if (subtotalField) subtotalField.value = header.subtotal || '';
+
+                  const taxField = manualForm.querySelector('input[name="tax_amount"]');
+                  if (taxField) taxField.value = header.tax || '';
+
+                  const totalField = manualForm.querySelector('input[name="total_amount"]');
+                  if (totalField) totalField.value = header.total || '';
 
                   // Populate additional fields
                   const remarksField = manualForm.querySelector('textarea[name="remarks"]');
@@ -976,20 +1103,39 @@
                     const firstItem = existingItems[0];
                     data.items.forEach((item, idx) => {
                       if (idx === 0 && firstItem){
-                        firstItem.querySelector('input[name="item_description[]"]').value = item.description || '';
-                        firstItem.querySelector('input[name="item_code[]"]').value = item.code || '';
-                        firstItem.querySelector('input[name="item_qty[]"]').value = item.qty || 1;
-                        firstItem.querySelector('input[name="item_unit[]"]').value = item.unit || '';
-                        firstItem.querySelector('input[name="item_price[]"]').value = item.rate || item.value || '';
+                        const descField = firstItem.querySelector('input[name="item_description[]"]');
+                        if (descField) descField.value = item.description || '';
+
+                        const codeField = firstItem.querySelector('input[name="item_code[]"]');
+                        if (codeField) codeField.value = item.code || '';
+
+                        const qtyField = firstItem.querySelector('input[name="item_qty[]"]');
+                        if (qtyField) qtyField.value = item.qty || 1;
+
+                        const unitField = firstItem.querySelector('input[name="item_unit[]"]');
+                        if (unitField) unitField.value = item.unit || '';
+
+                        const priceField = firstItem.querySelector('input[name="item_price[]"]');
+                        if (priceField) priceField.value = item.rate || item.value || '';
                       } else {
                         addLineItem();
                         const items = lineItemsContainer.querySelectorAll('.line-item-row');
                         const newItem = items[items.length - 1];
-                        newItem.querySelector('input[name="item_description[]"]').value = item.description || '';
-                        newItem.querySelector('input[name="item_code[]"]').value = item.code || '';
-                        newItem.querySelector('input[name="item_qty[]"]').value = item.qty || 1;
-                        newItem.querySelector('input[name="item_unit[]"]').value = item.unit || '';
-                        newItem.querySelector('input[name="item_price[]"]').value = item.rate || item.value || '';
+
+                        const descField = newItem.querySelector('input[name="item_description[]"]');
+                        if (descField) descField.value = item.description || '';
+
+                        const codeField = newItem.querySelector('input[name="item_code[]"]');
+                        if (codeField) codeField.value = item.code || '';
+
+                        const qtyField = newItem.querySelector('input[name="item_qty[]"]');
+                        if (qtyField) qtyField.value = item.qty || 1;
+
+                        const unitField = newItem.querySelector('input[name="item_unit[]"]');
+                        if (unitField) unitField.value = item.unit || '';
+
+                        const priceField = newItem.querySelector('input[name="item_price[]"]');
+                        if (priceField) priceField.value = item.rate || item.value || '';
                       }
                     });
                   }
@@ -1044,13 +1190,171 @@
                 });
               }
 
-              // Remove line item handler (delegated)
-              lineItemsContainer.addEventListener('click', function(e){
-                if (e.target.closest('.remove-item')){
-                  e.preventDefault();
-                  e.target.closest('.line-item-row').remove();
+              // ===== Customer Type Toggle =====
+              const customerTypeEl = document.getElementById('invoiceCustomerType');
+              const personalSubtypeWrapper = document.getElementById('personalSubtypeWrapper');
+              if (customerTypeEl){
+                function updateSubtypeVisibility(){
+                  if (customerTypeEl.value === 'personal'){
+                    personalSubtypeWrapper.style.display = 'block';
+                  } else {
+                    personalSubtypeWrapper.style.display = 'none';
+                  }
                 }
-              });
+                customerTypeEl.addEventListener('change', updateSubtypeVisibility);
+                updateSubtypeVisibility();
+              }
+
+              // ===== Order Type Selection and Service/Addon Loading =====
+              const orderTypeOptions = document.querySelectorAll('.order-type-option');
+              const serviceOrderSection = document.getElementById('serviceOrderSection');
+              const salesOrderSection = document.getElementById('salesOrderSection');
+              const serviceTypesContainer = document.getElementById('serviceTypesContainer');
+              const addonTypesContainer = document.getElementById('addonTypesContainer');
+              const serviceEtaHint = document.getElementById('serviceEtaHint');
+              const addonEtaHint = document.getElementById('addonEtaHint');
+
+              let serviceTypes = [];
+              let addons = [];
+
+              // Load service types and addons from API
+              async function loadServiceData(){
+                try {
+                  const response = await fetch('{% url "tracker:api_service_types" %}', {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                  });
+                  const data = await response.json();
+                  serviceTypes = data.service_types || [];
+                  addons = data.service_addons || [];
+                  renderServiceCheckboxes();
+                  renderAddonCheckboxes();
+                } catch (err){
+                  console.error('Error loading service data:', err);
+                }
+              }
+
+              function renderServiceCheckboxes(){
+                if (!serviceTypesContainer) return;
+                serviceTypesContainer.innerHTML = '';
+                serviceTypes.forEach((svc, idx) => {
+                  const col = document.createElement('div');
+                  col.className = 'col-md-6 col-lg-4';
+                  col.innerHTML = `
+                    <div class="service-checkbox-card">
+                      <input class="form-check-input service-checkbox" type="checkbox" id="svc_chk_${idx}" name="service_selection_chk" value="${svc.name}" data-minutes="${svc.estimated_minutes}">
+                      <label class="service-checkbox-label" for="svc_chk_${idx}">
+                        <div class="service-checkbox-content">
+                          <div class="service-checkbox-name">${svc.name}</div>
+                          <div class="service-checkbox-duration"><i class="fa fa-clock-o me-1"></i>${svc.estimated_minutes} mins</div>
+                        </div>
+                      </label>
+                    </div>
+                  `;
+                  serviceTypesContainer.appendChild(col);
+                });
+                updateServiceEta();
+              }
+
+              function renderAddonCheckboxes(){
+                if (!addonTypesContainer) return;
+                addonTypesContainer.innerHTML = '';
+                addons.forEach((addon, idx) => {
+                  const col = document.createElement('div');
+                  col.className = 'col-md-6 col-lg-4';
+                  col.innerHTML = `
+                    <div class="addon-checkbox-card">
+                      <input class="form-check-input addon-checkbox" type="checkbox" id="addon_chk_${idx}" name="tire_services_chk" value="${addon.name}" data-minutes="${addon.estimated_minutes}">
+                      <label class="addon-checkbox-label" for="addon_chk_${idx}">
+                        <div class="addon-checkbox-content">
+                          <div class="addon-checkbox-name">${addon.name}</div>
+                          <div class="addon-checkbox-duration"><i class="fa fa-clock-o me-1"></i>${addon.estimated_minutes} mins</div>
+                        </div>
+                      </label>
+                    </div>
+                  `;
+                  addonTypesContainer.appendChild(col);
+                });
+                updateAddonEta();
+              }
+
+              function updateServiceEta(){
+                if (!serviceTypesContainer) return;
+                const checked = serviceTypesContainer.querySelectorAll('.service-checkbox:checked');
+                let totalMinutes = 0;
+                checked.forEach(chk => {
+                  totalMinutes += parseInt(chk.dataset.minutes || 0);
+                });
+                const serviceSelection = Array.from(checked).map(c => c.value).join(',');
+                const serviceSelInput = document.getElementById('serviceSelection');
+                const estimatedDurInput = document.getElementById('estimatedDuration');
+                if (serviceSelInput) serviceSelInput.value = serviceSelection;
+                if (estimatedDurInput) estimatedDurInput.value = totalMinutes;
+                if (serviceEtaHint){
+                  if (totalMinutes > 0){
+                    serviceEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
+                    serviceEtaHint.style.display = 'block';
+                  } else {
+                    serviceEtaHint.style.display = 'none';
+                  }
+                }
+              }
+
+              function updateAddonEta(){
+                if (!addonTypesContainer) return;
+                const checked = addonTypesContainer.querySelectorAll('.addon-checkbox:checked');
+                let totalMinutes = 0;
+                checked.forEach(chk => {
+                  totalMinutes += parseInt(chk.dataset.minutes || 0);
+                });
+                const addonSelection = Array.from(checked).map(c => c.value).join(',');
+                const serviceSelInput = document.getElementById('serviceSelection');
+                const estimatedDurInput = document.getElementById('estimatedDuration');
+                if (serviceSelInput) serviceSelInput.value = addonSelection;
+                if (estimatedDurInput) estimatedDurInput.value = totalMinutes;
+                if (addonEtaHint){
+                  if (totalMinutes > 0){
+                    addonEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
+                    addonEtaHint.style.display = 'block';
+                  } else {
+                    addonEtaHint.style.display = 'none';
+                  }
+                }
+              }
+
+              if (orderTypeOptions && orderTypeOptions.length > 0){
+                orderTypeOptions.forEach(option => {
+                  option.addEventListener('change', function(){
+                    if (this.value === 'service'){
+                      if (serviceOrderSection) serviceOrderSection.style.display = 'block';
+                      if (salesOrderSection) salesOrderSection.style.display = 'none';
+                    } else {
+                      if (serviceOrderSection) serviceOrderSection.style.display = 'none';
+                      if (salesOrderSection) salesOrderSection.style.display = 'block';
+                    }
+                  });
+                });
+              }
+
+              // Attach listeners to service/addon checkboxes
+              if (serviceTypesContainer){
+                serviceTypesContainer.addEventListener('change', updateServiceEta);
+              }
+              if (addonTypesContainer){
+                addonTypesContainer.addEventListener('change', updateAddonEta);
+              }
+
+              // Load service data on modal open
+              if (serviceTypesContainer || addonTypesContainer){
+                loadServiceData();
+              }
+
+              // Remove line item handler (delegated) - REMOVED since we're not using line items anymore
+              // lineItemsContainer.addEventListener('click', function(e){
+              //   if (e.target.closest('.remove-item')){
+              //     e.preventDefault();
+              //     e.target.closest('.line-item-row').remove();
+              //   }
+              // });
 
               // Handle manual form submission
               if (manualForm){
@@ -1060,10 +1364,17 @@
                   // Validate required fields
                   const customerName = this.querySelector('input[name="customer_name"]').value.trim();
                   const customerPhone = this.querySelector('input[name="customer_phone"]').value.trim();
+                  const customerType = this.querySelector('select[name="customer_type"]').value.trim();
                   const totalAmount = this.querySelector('input[name="total_amount"]').value.trim();
+                  const orderType = this.querySelector('input[name="order_type"]:checked');
 
-                  if (!customerName || !customerPhone || !totalAmount){
-                    showError('<i class="fa fa-warning me-2"></i>Please fill in customer name, phone, and total amount.');
+                  if (!customerName || !customerPhone || !customerType || !totalAmount){
+                    showError('<i class="fa fa-warning me-2"></i>Please fill in customer name, phone, customer type, and total amount.');
+                    return;
+                  }
+
+                  if (!orderType){
+                    showError('<i class="fa fa-warning me-2"></i>Please select an order type (Service or Sales).');
                     return;
                   }
 
@@ -1265,7 +1576,7 @@
               <div>
                 <h6 class="mb-1"><i class="fa fa-file-pdf me-2" style="color: #dc3545;"></i>{{ doc.file_name }}</h6>
                 <small class="text-muted">
-                  {{ doc.document_type|upper }} • {{ doc.uploaded_at|date:"M d, Y H:i" }}
+                  {{ doc.document_type|upper }} �� {{ doc.uploaded_at|date:"M d, Y H:i" }}
                 </small>
               </div>
               <span class="badge bg-{% if doc.extraction_status == 'completed' %}success{% elif doc.extraction_status == 'processing' %}warning{% else %}danger{% endif %}">

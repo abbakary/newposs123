@@ -838,7 +838,16 @@ def parse_invoice_data(text: str) -> dict:
 
             # Extract all numbers from the line
             numbers = re.findall(r'[0-9\,]+\.?\d*', line_stripped)
-            float_numbers = [float(n.replace(',', '')) for n in numbers] if numbers else []
+            float_numbers = []
+            if numbers:
+                for n in numbers:
+                    try:
+                        cleaned = n.replace(',', '').strip()
+                        if cleaned and cleaned != '.' and cleaned != '':
+                            float_numbers.append(float(cleaned))
+                    except (ValueError, AttributeError):
+                        # Skip numbers that can't be converted
+                        continue
 
             # Detect unit/type indicators (PCS, NOS, UNT, HR, KG, etc.)
             unit_match = re.search(r'\b(NOS|PCS|KG|HR|LTR|PIECES?|UNITS?|BOX|CASE|SETS?|PC|KIT|UNT)\b', line_stripped, re.I)
@@ -1092,14 +1101,32 @@ def extract_from_bytes(file_bytes, filename: str = '') -> dict:
         # Format items with all extracted fields
         items = []
         for item in parsed.get('items', []):
-            items.append({
-                'description': item.get('description', ''),
-                'qty': item.get('qty', 1),
-                'unit': item.get('unit'),
-                'code': item.get('code'),
-                'value': float(item.get('value', 0)) if item.get('value') else 0,
-                'rate': float(item.get('rate', 0)) if item.get('rate') else None,
-            })
+            try:
+                value = 0
+                if item.get('value'):
+                    try:
+                        value = float(item.get('value'))
+                    except (ValueError, TypeError):
+                        value = 0
+
+                rate = None
+                if item.get('rate'):
+                    try:
+                        rate = float(item.get('rate'))
+                    except (ValueError, TypeError):
+                        rate = None
+
+                items.append({
+                    'description': item.get('description', ''),
+                    'qty': item.get('qty', 1),
+                    'unit': item.get('unit'),
+                    'code': item.get('code'),
+                    'value': value,
+                    'rate': rate,
+                })
+            except Exception as e:
+                logger.warning(f"Error processing item data: {e}")
+                continue
 
         # Check if we extracted any meaningful data
         has_customer = bool(header.get('customer_name'))
