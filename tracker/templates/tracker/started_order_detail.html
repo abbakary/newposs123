@@ -997,20 +997,39 @@
                     const firstItem = existingItems[0];
                     data.items.forEach((item, idx) => {
                       if (idx === 0 && firstItem){
-                        firstItem.querySelector('input[name="item_description[]"]').value = item.description || '';
-                        firstItem.querySelector('input[name="item_code[]"]').value = item.code || '';
-                        firstItem.querySelector('input[name="item_qty[]"]').value = item.qty || 1;
-                        firstItem.querySelector('input[name="item_unit[]"]').value = item.unit || '';
-                        firstItem.querySelector('input[name="item_price[]"]').value = item.rate || item.value || '';
+                        const descField = firstItem.querySelector('input[name="item_description[]"]');
+                        if (descField) descField.value = item.description || '';
+
+                        const codeField = firstItem.querySelector('input[name="item_code[]"]');
+                        if (codeField) codeField.value = item.code || '';
+
+                        const qtyField = firstItem.querySelector('input[name="item_qty[]"]');
+                        if (qtyField) qtyField.value = item.qty || 1;
+
+                        const unitField = firstItem.querySelector('input[name="item_unit[]"]');
+                        if (unitField) unitField.value = item.unit || '';
+
+                        const priceField = firstItem.querySelector('input[name="item_price[]"]');
+                        if (priceField) priceField.value = item.rate || item.value || '';
                       } else {
                         addLineItem();
                         const items = lineItemsContainer.querySelectorAll('.line-item-row');
                         const newItem = items[items.length - 1];
-                        newItem.querySelector('input[name="item_description[]"]').value = item.description || '';
-                        newItem.querySelector('input[name="item_code[]"]').value = item.code || '';
-                        newItem.querySelector('input[name="item_qty[]"]').value = item.qty || 1;
-                        newItem.querySelector('input[name="item_unit[]"]').value = item.unit || '';
-                        newItem.querySelector('input[name="item_price[]"]').value = item.rate || item.value || '';
+
+                        const descField = newItem.querySelector('input[name="item_description[]"]');
+                        if (descField) descField.value = item.description || '';
+
+                        const codeField = newItem.querySelector('input[name="item_code[]"]');
+                        if (codeField) codeField.value = item.code || '';
+
+                        const qtyField = newItem.querySelector('input[name="item_qty[]"]');
+                        if (qtyField) qtyField.value = item.qty || 1;
+
+                        const unitField = newItem.querySelector('input[name="item_unit[]"]');
+                        if (unitField) unitField.value = item.unit || '';
+
+                        const priceField = newItem.querySelector('input[name="item_price[]"]');
+                        if (priceField) priceField.value = item.rate || item.value || '';
                       }
                     });
                   }
