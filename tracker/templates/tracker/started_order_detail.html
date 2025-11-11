@@ -1234,6 +1234,7 @@
               }
 
               function renderServiceCheckboxes(){
+                if (!serviceTypesContainer) return;
                 serviceTypesContainer.innerHTML = '';
                 serviceTypes.forEach((svc, idx) => {
                   const col = document.createElement('div');
@@ -1255,6 +1256,7 @@
               }
 
               function renderAddonCheckboxes(){
+                if (!addonTypesContainer) return;
                 addonTypesContainer.innerHTML = '';
                 addons.forEach((addon, idx) => {
                   const col = document.createElement('div');
@@ -1276,57 +1278,75 @@
               }
 
               function updateServiceEta(){
-                const checked = document.querySelectorAll('.service-checkbox:checked');
+                if (!serviceTypesContainer) return;
+                const checked = serviceTypesContainer.querySelectorAll('.service-checkbox:checked');
                 let totalMinutes = 0;
                 checked.forEach(chk => {
                   totalMinutes += parseInt(chk.dataset.minutes || 0);
                 });
                 const serviceSelection = Array.from(checked).map(c => c.value).join(',');
-                document.getElementById('serviceSelection').value = serviceSelection;
-                document.getElementById('estimatedDuration').value = totalMinutes;
-                if (totalMinutes > 0){
-                  serviceEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
-                  serviceEtaHint.style.display = 'block';
-                } else {
-                  serviceEtaHint.style.display = 'none';
+                const serviceSelInput = document.getElementById('serviceSelection');
+                const estimatedDurInput = document.getElementById('estimatedDuration');
+                if (serviceSelInput) serviceSelInput.value = serviceSelection;
+                if (estimatedDurInput) estimatedDurInput.value = totalMinutes;
+                if (serviceEtaHint){
+                  if (totalMinutes > 0){
+                    serviceEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
+                    serviceEtaHint.style.display = 'block';
+                  } else {
+                    serviceEtaHint.style.display = 'none';
+                  }
                 }
               }
 
               function updateAddonEta(){
-                const checked = document.querySelectorAll('.addon-checkbox:checked');
+                if (!addonTypesContainer) return;
+                const checked = addonTypesContainer.querySelectorAll('.addon-checkbox:checked');
                 let totalMinutes = 0;
                 checked.forEach(chk => {
                   totalMinutes += parseInt(chk.dataset.minutes || 0);
                 });
                 const addonSelection = Array.from(checked).map(c => c.value).join(',');
-                document.getElementById('serviceSelection').value = addonSelection;
-                document.getElementById('estimatedDuration').value = totalMinutes;
-                if (totalMinutes > 0){
-                  addonEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
-                  addonEtaHint.style.display = 'block';
-                } else {
-                  addonEtaHint.style.display = 'none';
+                const serviceSelInput = document.getElementById('serviceSelection');
+                const estimatedDurInput = document.getElementById('estimatedDuration');
+                if (serviceSelInput) serviceSelInput.value = addonSelection;
+                if (estimatedDurInput) estimatedDurInput.value = totalMinutes;
+                if (addonEtaHint){
+                  if (totalMinutes > 0){
+                    addonEtaHint.textContent = `Estimated duration: ${totalMinutes} minutes`;
+                    addonEtaHint.style.display = 'block';
+                  } else {
+                    addonEtaHint.style.display = 'none';
+                  }
                 }
               }
 
-              orderTypeOptions.forEach(option => {
-                option.addEventListener('change', function(){
-                  if (this.value === 'service'){
-                    serviceOrderSection.style.display = 'block';
-                    salesOrderSection.style.display = 'none';
-                  } else {
-                    serviceOrderSection.style.display = 'none';
-                    salesOrderSection.style.display = 'block';
-                  }
+              if (orderTypeOptions && orderTypeOptions.length > 0){
+                orderTypeOptions.forEach(option => {
+                  option.addEventListener('change', function(){
+                    if (this.value === 'service'){
+                      if (serviceOrderSection) serviceOrderSection.style.display = 'block';
+                      if (salesOrderSection) salesOrderSection.style.display = 'none';
+                    } else {
+                      if (serviceOrderSection) serviceOrderSection.style.display = 'none';
+                      if (salesOrderSection) salesOrderSection.style.display = 'block';
+                    }
+                  });
                 });
-              });
+              }
 
               // Attach listeners to service/addon checkboxes
-              serviceTypesContainer.addEventListener('change', updateServiceEta);
-              addonTypesContainer.addEventListener('change', updateAddonEta);
+              if (serviceTypesContainer){
+                serviceTypesContainer.addEventListener('change', updateServiceEta);
+              }
+              if (addonTypesContainer){
+                addonTypesContainer.addEventListener('change', updateAddonEta);
+              }
 
               // Load service data on modal open
-              loadServiceData();
+              if (serviceTypesContainer || addonTypesContainer){
+                loadServiceData();
+              }
 
               // Remove line item handler (delegated) - REMOVED since we're not using line items anymore
               // lineItemsContainer.addEventListener('click', function(e){
